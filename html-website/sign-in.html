@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface": "#141b2b",
+                        "on-secondary-container": "#5c647a",
+                        "outline": "#6c7b6b",
+                        "inverse-on-surface": "#edf0ff",
+                        "on-error-container": "#93000a",
+                        "error-container": "#ffdad6",
+                        "on-secondary": "#ffffff",
+                        "primary-fixed-dim": "#3de273",
+                        "on-primary-fixed": "#002109",
+                        "outline-variant": "#bbcbb9",
+                        "on-tertiary": "#ffffff",
+                        "primary": "#006d2f",
+                        "error": "#ba1a1a",
+                        "secondary-container": "#dae2fd",
+                        "on-primary-container": "#005523",
+                        "tertiary-container": "#aebbb3",
+                        "inverse-primary": "#3de273",
+                        "surface-container-highest": "#dce2f7",
+                        "on-tertiary-fixed-variant": "#3e4943",
+                        "on-tertiary-fixed": "#131e19",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "on-primary-fixed-variant": "#005322",
+                        "surface-container-high": "#e1e8fd",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#25d366",
+                        "on-tertiary-container": "#3f4b45",
+                        "on-surface-variant": "#3c4a3d",
+                        "surface-bright": "#f9f9ff",
+                        "surface-container": "#e9edff",
+                        "background": "#f9f9ff",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f9f9ff",
+                        "on-background": "#141b2b",
+                        "tertiary-fixed": "#d9e6dd",
+                        "inverse-surface": "#293040",
+                        "on-secondary-fixed": "#131b2e",
+                        "on-error": "#ffffff",
+                        "tertiary": "#55615a",
+                        "secondary": "#565e74",
+                        "surface-tint": "#006d2f",
+                        "surface-variant": "#dce2f7",
+                        "surface-dim": "#d3daef",
+                        "secondary-fixed": "#dae2fd",
+                        "primary-fixed": "#66ff8e",
+                        "tertiary-fixed-dim": "#bdcac1",
+                        "surface-container-low": "#f1f3ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "section-padding-md": "80px",
+                        "element-gap": "16px",
+                        "gutter": "24px",
+                        "section-padding-lg": "120px",
+                        "container-max": "1200px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "display-xl": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.03em", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "headline-md": ["30px", { "lineHeight": "38px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-sm": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "display-xl": ["60px", { "lineHeight": "72px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24
+        }
+
+        .whatsapp-chat-bg {
+            background-color: #e5ddd5;
+            background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuAd2bFKWpddSF8x3pv1HryNbG48l0u3ADVB769oAcT_FNXqyVHl-KHAvNIrL1blhd0fN2laqy86jEFcJJY5LRl6yqiNujNs1srQ4h29aEbc4ptrvsEvhgoL9gE80X5UbG18sih7hGQkFXGC9pabjOoA9N6HwtNWENYY67oZNqmXl8i8AVcmNi5w4wNiszLdxRiJtotUxWRDKuDjvOTRlaRJaSgQrHJPK77Ar-vAv8yTJ3WF-hw81xdL0kPyuZFGVOC6JFYw-FtJsU_S)
+        }
+    </style>
+</head>
+
+<body class="bg-surface font-body-md text-on-surface antialiased">
+    <!-- TopNavBar Suppression: Page is Transactional (Login) -->
+    <main class="min-h-screen flex flex-col md:flex-row overflow-hidden">
+        <!-- Left Side: Visual Content -->
+        <section
+            class="hidden md:flex md:w-1/2 relative bg-gradient-to-br from-primary via-on-primary-container to-primary flex-col items-center justify-center p-12 overflow-hidden">
+            <!-- Animated Gradient Overlay -->
+            <div class="absolute inset-0 opacity-20 pointer-events-none">
+                <div class="absolute top-0 -left-1/4 w-full h-full bg-primary-container blur-[120px] rounded-full">
+                </div>
+                <div class="absolute bottom-0 -right-1/4 w-full h-full bg-primary-fixed-dim blur-[120px] rounded-full">
+                </div>
+            </div>
+            <div class="relative z-10 w-full max-w-lg">
+                <div class="mb-12">
+                    <h1 class="font-display-lg text-display-lg text-white mb-6 leading-tight">
+                        Automate your WhatsApp sales with AI
+                    </h1>
+                    <p class="font-body-lg text-body-lg text-white/80 max-w-md">
+                        Connect your business accounts and let our intelligent agents handle lead qualification and
+                        conversion 24/7.
+                    </p>
+                </div>
+                <!-- WhatsApp Chat Mockup -->
+                <div
+                    class="relative w-full max-w-[400px] aspect-[9/16] bg-white rounded-[2rem] shadow-2xl p-3 border-[8px] border-on-surface">
+                    <div
+                        class="h-full w-full bg-[#E5DDD5] rounded-[1.2rem] overflow-hidden flex flex-col whatsapp-chat-bg">
+                        <!-- Chat Header -->
+                        <div class="bg-[#075E54] p-4 flex items-center gap-3 text-white">
+                            <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+                            <div
+                                class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center">
+                                <span class="material-symbols-outlined text-on-surface-variant"
+                                    style="font-variation-settings: 'FILL' 1;">person</span>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold">New Lead - Sarah</p>
+                                <p class="text-[10px] opacity-80">online</p>
+                            </div>
+                        </div>
+                        <!-- Chat Messages -->
+                        <div class="flex-1 p-4 space-y-4 overflow-y-auto">
+                            <!-- Lead Message -->
+                            <div class="flex justify-start">
+                                <div class="bg-white p-3 rounded-xl rounded-tl-none shadow-sm max-w-[80%]">
+                                    <p class="text-sm text-on-surface">Hi! I'm interested in the Enterprise plan. What's
+                                        the pricing?</p>
+                                    <p class="text-[9px] text-gray-400 text-right mt-1">10:42 AM</p>
+                                </div>
+                            </div>
+                            <!-- AI Response -->
+                            <div class="flex justify-end">
+                                <div class="bg-[#DCF8C6] p-3 rounded-xl rounded-tr-none shadow-sm max-w-[80%]">
+                                    <p class="text-sm text-on-surface">Hello! Our Enterprise plan starts at $499/mo. It
+                                        includes custom AI training and 24/7 priority support. Would you like a demo? 🚀
+                                    </p>
+                                    <div class="flex items-center justify-end gap-1 mt-1">
+                                        <p class="text-[9px] text-gray-400">10:42 AM</p>
+                                        <span class="material-symbols-outlined text-[14px] text-primary"
+                                            style="font-variation-settings: 'FILL' 1;">done_all</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Lead Message -->
+                            <div class="flex justify-start">
+                                <div class="bg-white p-3 rounded-xl rounded-tl-none shadow-sm max-w-[80%]">
+                                    <p class="text-sm text-on-surface">Yes, please! Tomorrow at 2pm?</p>
+                                    <p class="text-[9px] text-gray-400 text-right mt-1">10:43 AM</p>
+                                </div>
+                            </div>
+                            <!-- AI Response -->
+                            <div class="flex justify-end">
+                                <div class="bg-[#DCF8C6] p-3 rounded-xl rounded-tr-none shadow-sm max-w-[80%]">
+                                    <p class="text-sm text-on-surface">Perfect! I've scheduled your demo with Mark for
+                                        tomorrow at 2:00 PM. I'll send a calendar invite now!</p>
+                                    <div class="flex items-center justify-end gap-1 mt-1">
+                                        <p class="text-[9px] text-gray-400">10:43 AM</p>
+                                        <span class="material-symbols-outlined text-[14px] text-primary"
+                                            style="font-variation-settings: 'FILL' 1;">done_all</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Chat Input Mockup -->
+                        <div class="p-2 bg-white/50 backdrop-blur-sm flex items-center gap-2">
+                            <div class="flex-1 bg-white rounded-full h-10 px-4 flex items-center text-gray-400">
+                                <span class="text-xs">Type a message...</span>
+                            </div>
+                            <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white">
+                                <span class="material-symbols-outlined">mic</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Background Image decorative layer -->
+            <div class="absolute -bottom-20 -left-20 w-96 h-96 opacity-10">
+                <img class="w-full h-full object-contain"
+                    data-alt="A highly detailed close-up of a digital mesh network consisting of fine glowing lines and nodes. The style is minimalist and high-tech, with a color palette of deep forest greens and bright emerald accents on a dark background. The lighting is soft and ambient, creating a sense of sophisticated AI connectivity."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcuI6cCnQweTBZ3cpuXzm03N9xDr7hs7T678VjLgZ9YXewgfdJIRLL44vg0CBg7Mtx22FPkKEXs5-gd-FnFVKuUz_5I9Tf_GXlWhBwP-lsgH2f-sIHmr_3p2mBdn1k3bjkqJenPZwSn2cJK38RP8Gi77Bdpj4b5kmMijUkVCV3ClpaxDjjUWONxQioC2DqzsISMwEZFFremsjsKAyLSU-vofTPnlOSWq_tGVVTf4n7RMR5j0T_UJLW9eWFakw1pqZNpXevuRefzSFp" />
+            </div>
+        </section>
+        <!-- Right Side: Login Form -->
+        <section class="flex-1 flex flex-col items-center justify-center p-6 md:p-12 bg-surface-bright">
+            <div class="w-full max-w-[440px]">
+                <!-- Branding mobile only -->
+                <div class="md:hidden flex items-center justify-center gap-2 mb-12">
+                    <div class="w-8 h-8 bg-primary-container rounded-lg flex items-center justify-center">
+                        <span class="material-symbols-outlined text-on-primary-container text-[20px]">forum</span>
+                    </div>
+                    <span class="font-headline-sm text-headline-sm text-on-surface tracking-tighter">ConvAI</span>
+                </div>
+                <!-- Login Card -->
+                <div
+                    class="bg-white p-8 md:p-10 rounded-xl shadow-[0_15px_25px_-5px_rgba(0,0,0,0.04)] border border-gray-100">
+                    <header class="mb-8">
+                        <h2 class="font-headline-md text-headline-md text-on-surface mb-2">Welcome Back 👋</h2>
+                        <p class="font-body-md text-body-md text-on-secondary-container">Sign in to your WhatsApp AI
+                            dashboard</p>
+                    </header>
+                    <!-- Form -->
+                    <form class="space-y-6">
+                        <div>
+                            <label class="block font-label-md text-label-md text-on-surface mb-2" for="email">Email
+                                Address</label>
+                            <input
+                                class="w-full px-4 py-3 bg-surface-container-lowest border border-gray-200 rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container focus:border-primary-container transition-all"
+                                id="email" placeholder="name@company.com" type="email" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label class="font-label-md text-label-md text-on-surface"
+                                    for="password">Password</label>
+                                <a class="font-label-sm text-label-sm text-primary hover:underline transition-all"
+                                    href="#">Forgot Password?</a>
+                            </div>
+                            <input
+                                class="w-full px-4 py-3 bg-surface-container-lowest border border-gray-200 rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container focus:border-primary-container transition-all"
+                                id="password" placeholder="••••••••" type="password" />
+                        </div>
+                        <button
+                            class="w-full py-4 bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
+                            type="submit">
+                            Sign In
+                        </button>
+                    </form>
+                    <!-- Divider -->
+                    <div class="relative my-8">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-100"></div>
+                        </div>
+                        <div class="relative flex justify-center text-label-sm uppercase">
+                            <span class="bg-white px-4 text-gray-400">Or continue with</span>
+                        </div>
+                    </div>
+                    <!-- Social Login -->
+                    <div class="space-y-3">
+                        <button
+                            class="w-full flex items-center justify-center gap-3 py-3 border border-gray-200 rounded-lg font-label-md text-label-md text-on-surface hover:bg-gray-50 transition-all">
+                            <img alt="Google" class="w-5 h-5"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCf2W8vIHFRZTT7NdQ0KdFgVAUJ_HnzGu4C_roQ9-I3J8KBebQvcAH_dOiBGV_a9BaI1GNiHdB8bNvcGIg5qIe96G07TSiX5wVXaIcxIrquBpsYePaGAR2FQeS7_Aw0DFpAx3elPTBi15EdMSaUNOX3WJ92wm5KpD5Jp4pNwoyS59L8WANw_CWtacCn5xdjVputgmGaonUblHnk0Jc8m78717IeHV5kFj1O3DA9EEDFiesnHBt4NoDlns8FI7H6188MNcDTCLH50o2L" />
+                            Continue with Google
+                        </button>
+                        <button
+                            class="w-full flex items-center justify-center gap-3 py-3 border border-gray-200 rounded-lg font-label-md text-label-md text-on-surface hover:bg-gray-50 transition-all">
+                            <span class="material-symbols-outlined text-[20px] text-primary"
+                                style="font-variation-settings: 'FILL' 1;">chat</span>
+                            Continue with WhatsApp
+                        </button>
+                    </div>
+                    <!-- Signup Link -->
+                    <p class="mt-8 text-center font-label-md text-label-md text-on-secondary-container">
+                        Don't have an account?
+                        <a class="text-primary font-semibold hover:underline" href="#">Sign up</a>
+                    </p>
+                </div>
+                <!-- Footer Security Note -->
+                <div class="mt-12 flex items-center justify-center gap-2 text-gray-400">
+                    <span class="material-symbols-outlined text-[18px]">lock</span>
+                    <p class="font-label-sm text-label-sm">Secure login powered by encrypted authentication</p>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- Footer: Visible only at bottom of mobile if scrolled, but usually hidden on login -->
+    <footer class="bg-white border-t border-gray-100">
+        <div class="max-w-[1200px] mx-auto py-8 px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p class="font-['Inter'] text-xs text-gray-400">© 2024 ConvAI Inc. Engineered for high-velocity sales.</p>
+            <div class="flex gap-6">
+                <a class="font-['Inter'] text-xs text-gray-400 hover:text-gray-900 transition-colors" href="#">Privacy
+                    Policy</a>
+                <a class="font-['Inter'] text-xs text-gray-400 hover:text-gray-900 transition-colors" href="#">Terms of
+                    Service</a>
+                <a class="font-['Inter'] text-xs text-gray-400 hover:text-gray-900 transition-colors"
+                    href="#">Security</a>
+                <a class="font-['Inter'] text-xs text-gray-400 hover:text-gray-900 transition-colors"
+                    href="#">Status</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

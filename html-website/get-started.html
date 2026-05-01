@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Get Started - WhatsApp AI Sales Assistant</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-on-surface": "#edf0ff",
+                        "on-error-container": "#93000a",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#141b2b",
+                        "on-secondary-container": "#5c647a",
+                        "outline": "#6c7b6b",
+                        "on-primary-fixed": "#002109",
+                        "outline-variant": "#bbcbb9",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "primary-fixed-dim": "#3de273",
+                        "primary": "#006d2f",
+                        "error": "#ba1a1a",
+                        "secondary-container": "#dae2fd",
+                        "tertiary-container": "#aebbb3",
+                        "inverse-primary": "#3de273",
+                        "on-primary-container": "#005523",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#25d366",
+                        "on-tertiary-container": "#3f4b45",
+                        "on-surface-variant": "#3c4a3d",
+                        "surface-container-highest": "#dce2f7",
+                        "on-tertiary-fixed-variant": "#3e4943",
+                        "on-tertiary-fixed": "#131e19",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "on-primary-fixed-variant": "#005322",
+                        "surface-container-high": "#e1e8fd",
+                        "surface-container-lowest": "#ffffff",
+                        "surface": "#f9f9ff",
+                        "on-background": "#141b2b",
+                        "tertiary-fixed": "#d9e6dd",
+                        "surface-bright": "#f9f9ff",
+                        "surface-container": "#e9edff",
+                        "background": "#f9f9ff",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "on-error": "#ffffff",
+                        "tertiary": "#55615a",
+                        "secondary": "#565e74",
+                        "inverse-surface": "#293040",
+                        "on-secondary-fixed": "#131b2e",
+                        "tertiary-fixed-dim": "#bdcac1",
+                        "surface-container-low": "#f1f3ff",
+                        "surface-tint": "#006d2f",
+                        "surface-variant": "#dce2f7",
+                        "surface-dim": "#d3daef",
+                        "secondary-fixed": "#dae2fd",
+                        "primary-fixed": "#66ff8e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "24px",
+                        "section-padding-lg": "120px",
+                        "container-max": "1200px",
+                        "unit": "8px",
+                        "section-padding-md": "80px",
+                        "element-gap": "16px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "display-xl": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "label-sm": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        .whatsapp-shadow {
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+
+<body class="bg-background font-body-md text-on-background min-h-screen flex flex-col">
+    <!-- TopAppBar from JSON -->
+    <header
+        class="bg-white/80 dark:bg-gray-950/80 backdrop-blur-md fixed top-0 w-full z-50 border-b border-[#E5E7EB] dark:border-gray-800 shadow-sm">
+        <div class="flex justify-between items-center h-16 px-6 max-w-[1200px] mx-auto">
+            <div class="text-xl font-bold tracking-tight text-gray-900 dark:text-white font-['Inter'] antialiased">
+                <span class="text-[#25D366]">WhatsApp</span> AI Sales Assistant
+            </div>
+            <div class="flex items-center gap-6">
+                <nav class="hidden md:flex gap-6">
+                    <a class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
+                        href="#">Help</a>
+                    <a class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
+                        href="#">Documentation</a>
+                </nav>
+                <div class="flex items-center gap-2">
+                    <span
+                        class="material-symbols-outlined text-gray-500 cursor-pointer transition-colors duration-200 hover:bg-gray-50 p-2 rounded-full"
+                        data-icon="help_outline">help_outline</span>
+                    <button
+                        class="bg-white border border-[#E5E7EB] px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors duration-200 active:scale-95 duration-150">Sign
+                        In</button>
+                </div>
+            </div>
+        </div>
+    </header>
+    <main class="flex-grow pt-24 pb-12 flex items-center justify-center">
+        <div class="max-w-[1200px] w-full px-6 grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+            <!-- Left Side: Onboarding Content -->
+            <div class="lg:col-span-7 space-y-10">
+                <div class="space-y-2">
+                    <h1 class="font-display-lg text-display-lg text-on-surface">Get Started in Minutes</h1>
+                    <p class="font-body-lg text-body-lg text-secondary">Set up your AI WhatsApp assistant in just a few
+                        steps</p>
+                </div>
+                <!-- Progress Indicator -->
+                <div class="flex items-center w-full max-w-xl">
+                    <div class="flex-1 flex flex-col items-center group">
+                        <div
+                            class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-label-sm font-label-sm">
+                            1</div>
+                        <span class="mt-2 text-label-sm font-label-sm text-on-primary-container">Business</span>
+                    </div>
+                    <div class="h-px bg-outline-variant flex-1 mb-6"></div>
+                    <div class="flex-1 flex flex-col items-center">
+                        <div
+                            class="w-8 h-8 rounded-full border-2 border-outline-variant text-outline flex items-center justify-center text-label-sm font-label-sm">
+                            2</div>
+                        <span class="mt-2 text-label-sm font-label-sm text-outline">WhatsApp</span>
+                    </div>
+                    <div class="h-px bg-outline-variant flex-1 mb-6"></div>
+                    <div class="flex-1 flex flex-col items-center">
+                        <div
+                            class="w-8 h-8 rounded-full border-2 border-outline-variant text-outline flex items-center justify-center text-label-sm font-label-sm">
+                            3</div>
+                        <span class="mt-2 text-label-sm font-label-sm text-outline">Products</span>
+                    </div>
+                    <div class="h-px bg-outline-variant flex-1 mb-6"></div>
+                    <div class="flex-1 flex flex-col items-center">
+                        <div
+                            class="w-8 h-8 rounded-full border-2 border-outline-variant text-outline flex items-center justify-center text-label-sm font-label-sm">
+                            4</div>
+                        <span class="mt-2 text-label-sm font-label-sm text-outline">AI Config</span>
+                    </div>
+                </div>
+                <!-- Step 1: Business Info Form (Active) -->
+                <div class="bg-white p-8 rounded-xl border border-outline-variant whatsapp-shadow space-y-8">
+                    <div class="space-y-6">
+                        <div class="space-y-2">
+                            <label class="font-label-md text-label-md text-on-surface">Business Name</label>
+                            <input
+                                class="w-full border-outline-variant rounded-lg focus:ring-primary focus:border-primary px-4 py-3 font-body-md"
+                                placeholder="e.g. Acme Coffee Roasters" type="text" />
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-element-gap">
+                            <div class="space-y-2">
+                                <label class="font-label-md text-label-md text-on-surface">Business Type</label>
+                                <select
+                                    class="w-full border-outline-variant rounded-lg focus:ring-primary focus:border-primary px-4 py-3 font-body-md appearance-none">
+                                    <option>Select type...</option>
+                                    <option>Retail</option>
+                                    <option>Services</option>
+                                    <option>E-commerce</option>
+                                    <option>Consulting</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="font-label-md text-label-md text-on-surface">Country</label>
+                                <select
+                                    class="w-full border-outline-variant rounded-lg focus:ring-primary focus:border-primary px-4 py-3 font-body-md appearance-none">
+                                    <option>Select country...</option>
+                                    <option>United States</option>
+                                    <option>United Kingdom</option>
+                                    <option>Brazil</option>
+                                    <option>India</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-4 border-t border-surface-container flex justify-end items-center gap-4">
+                        <button
+                            class="px-6 py-3 font-label-md text-label-md text-secondary hover:text-on-surface transition-colors">Save
+                            Draft</button>
+                        <button
+                            class="bg-primary text-white px-8 py-3 rounded-lg font-label-md text-label-md shadow-sm hover:brightness-110 active:scale-95 transition-all flex items-center gap-2">
+                            Next Step
+                            <span class="material-symbols-outlined text-sm"
+                                data-icon="arrow_forward">arrow_forward</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Side: Chat Preview -->
+            <div class="lg:col-span-5 sticky top-24">
+                <div
+                    class="bg-surface-container-low rounded-3xl p-6 border border-outline-variant relative overflow-hidden">
+                    <!-- Glassy Background Decor -->
+                    <div class="absolute -top-24 -right-24 w-64 h-64 bg-primary-container/20 rounded-full blur-3xl">
+                    </div>
+                    <div class="absolute -bottom-24 -left-24 w-64 h-64 bg-secondary-container/20 rounded-full blur-3xl">
+                    </div>
+                    <!-- Chat Device Mockup -->
+                    <div
+                        class="relative bg-[#E5DDD5] rounded-2xl overflow-hidden border-8 border-inverse-surface shadow-2xl aspect-[9/16] max-w-[320px] mx-auto">
+                        <!-- WhatsApp Header -->
+                        <div class="bg-[#075E54] p-3 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-white" data-icon="arrow_back">arrow_back</span>
+                            <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-white text-sm"
+                                    data-icon="person">person</span>
+                            </div>
+                            <div>
+                                <h4 class="text-white text-xs font-bold">Acme Assistant</h4>
+                                <p class="text-white/70 text-[10px]">Online</p>
+                            </div>
+                        </div>
+                        <!-- Chat Body -->
+                        <div class="p-4 space-y-4 h-full">
+                            <!-- Timestamp -->
+                            <div class="flex justify-center">
+                                <span
+                                    class="bg-[#D1E9F1] text-[#55615a] text-[10px] px-2 py-0.5 rounded-md shadow-sm">TODAY</span>
+                            </div>
+                            <!-- Customer Message -->
+                            <div class="flex justify-start">
+                                <div class="bg-white p-3 rounded-lg rounded-tl-none shadow-sm max-w-[80%] relative">
+                                    <p class="text-xs text-on-surface">Hi! I saw your new coffee roast online. How much
+                                        is this?</p>
+                                    <p class="text-[9px] text-on-surface-variant text-right mt-1">10:42 AM</p>
+                                </div>
+                            </div>
+                            <!-- AI Response -->
+                            <div class="flex justify-end">
+                                <div class="bg-[#DCF8C6] p-3 rounded-lg rounded-tr-none shadow-sm max-w-[80%] relative">
+                                    <p class="text-xs text-on-surface">It’s $20 👍 Would you like to order? I can handle
+                                        the payment right here.</p>
+                                    <div class="flex items-center justify-end gap-1 mt-1">
+                                        <p class="text-[9px] text-on-surface-variant">10:42 AM</p>
+                                        <span class="material-symbols-outlined text-[10px] text-[#34B7F1]"
+                                            data-icon="done_all">done_all</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="pt-4 opacity-50 select-none">
+                                <div
+                                    class="bg-white p-2 rounded-full flex items-center gap-2 border border-outline-variant">
+                                    <span class="material-symbols-outlined text-on-surface-variant text-sm"
+                                        data-icon="sentiment_satisfied">sentiment_satisfied</span>
+                                    <p class="text-[10px] text-on-surface-variant flex-grow">Type a message</p>
+                                    <span class="material-symbols-outlined text-on-surface-variant text-sm"
+                                        data-icon="attach_file">attach_file</span>
+                                    <span class="material-symbols-outlined text-on-surface-variant text-sm"
+                                        data-icon="photo_camera">photo_camera</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-6 text-center">
+                        <p class="text-label-sm font-label-sm text-secondary">Live Preview of your Assistant</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <!-- Footer from JSON -->
+    <footer class="w-full border-t border-[#F3F4F6] dark:border-gray-800 bg-white dark:bg-gray-950 mt-auto">
+        <div
+            class="flex flex-col md:flex-row justify-between items-center py-8 px-6 max-w-[1200px] mx-auto space-y-4 md:space-y-0">
+            <div class="text-sm font-['Inter'] text-gray-500 dark:text-gray-400">
+                © 2024 WhatsApp AI Sales Assistant. Powered by Intelligent Conversational Engineering.
+            </div>
+            <div class="flex gap-6">
+                <a class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer text-sm"
+                    href="#">Privacy Policy</a>
+                <a class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer text-sm"
+                    href="#">Terms of Service</a>
+                <a class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer text-sm"
+                    href="#">Help Center</a>
+                <a class="text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors cursor-pointer text-sm"
+                    href="#">API Status</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

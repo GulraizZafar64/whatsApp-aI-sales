@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Contact Us - WhatsApp AI Sales Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed": "#d9e6dd",
+                        "surface-dim": "#d3daef",
+                        "on-primary-fixed-variant": "#005322",
+                        "inverse-surface": "#293040",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "secondary-container": "#dae2fd",
+                        "on-surface-variant": "#3c4a3d",
+                        "error-container": "#ffdad6",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-container": "#25d366",
+                        "on-error": "#ffffff",
+                        "outline-variant": "#bbcbb9",
+                        "on-secondary": "#ffffff",
+                        "on-primary-container": "#005523",
+                        "surface-container": "#e9edff",
+                        "surface-bright": "#f9f9ff",
+                        "surface-variant": "#dce2f7",
+                        "primary-fixed": "#66ff8e",
+                        "inverse-on-surface": "#edf0ff",
+                        "on-tertiary-fixed-variant": "#3e4943",
+                        "on-background": "#141b2b",
+                        "secondary-fixed": "#dae2fd",
+                        "surface-container-highest": "#dce2f7",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "background": "#f9f9ff",
+                        "primary-fixed-dim": "#3de273",
+                        "on-surface": "#141b2b",
+                        "tertiary-container": "#aebbb3",
+                        "surface": "#f9f9ff",
+                        "secondary": "#565e74",
+                        "on-secondary-container": "#5c647a",
+                        "on-primary-fixed": "#002109",
+                        "on-secondary-fixed": "#131b2e",
+                        "surface-container-high": "#e1e8fd",
+                        "on-tertiary-container": "#3f4b45",
+                        "on-tertiary-fixed": "#131e19",
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "primary": "#006d2f",
+                        "inverse-primary": "#3de273",
+                        "surface-tint": "#006d2f",
+                        "surface-container-low": "#f1f3ff",
+                        "tertiary-fixed-dim": "#bdcac1",
+                        "tertiary": "#55615a",
+                        "outline": "#6c7b6b",
+                        "error": "#ba1a1a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "container-max": "1200px",
+                        "section-padding-md": "80px",
+                        "section-padding-lg": "120px",
+                        "gutter": "24px",
+                        "element-gap": "16px"
+                    },
+                    "fontFamily": {
+                        "display-lg": ["Inter"],
+                        "display-xl": ["Inter"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "display-xl": ["60px", { "lineHeight": "72px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.03em", "fontWeight": "600" }],
+                        "headline-sm": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "headline-md": ["30px", { "lineHeight": "38px", "letterSpacing": "-0.01em", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .custom-shadow-sm {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .custom-shadow-md {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.04), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+        }
+
+        .glass-nav {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+
+<body class="bg-surface font-body-md text-on-surface antialiased">
+    <!-- TopNavBar -->
+    <nav
+        class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800 shadow-sm">
+        <div class="max-w-7xl mx-auto flex items-center justify-between px-8 py-4">
+            <div class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">WhatsApp AI Sales Assistant
+            </div>
+            <div class="hidden md:flex items-center gap-8">
+                <a class="font-sans text-sm font-medium tracking-tight text-slate-600 dark:text-slate-400 hover:text-emerald-500 transition-colors duration-200"
+                    href="#">Features</a>
+                <a class="font-sans text-sm font-medium tracking-tight text-slate-600 dark:text-slate-400 hover:text-emerald-500 transition-colors duration-200"
+                    href="#">Solutions</a>
+                <a class="font-sans text-sm font-medium tracking-tight text-slate-600 dark:text-slate-400 hover:text-emerald-500 transition-colors duration-200"
+                    href="#">Pricing</a>
+                <a class="font-sans text-sm font-medium tracking-tight text-emerald-600 dark:text-emerald-400 font-semibold border-b-2 border-emerald-500 pb-1"
+                    href="#">Contact</a>
+            </div>
+            <div class="flex items-center gap-4">
+                <button
+                    class="font-sans text-sm font-medium tracking-tight text-slate-600 dark:text-slate-400 hover:text-emerald-500 transition-colors duration-200 active:scale-95">Login</button>
+                <button
+                    class="bg-primary-container text-on-primary-container px-5 py-2.5 rounded-xl font-sans text-sm font-bold tracking-tight shadow-sm hover:opacity-90 active:scale-95 transition-all">Get
+                    Started</button>
+            </div>
+        </div>
+    </nav>
+    <main class="pt-32">
+        <!-- Hero Section -->
+        <section class="max-w-7xl mx-auto px-8 mb-20 text-center">
+            <span
+                class="inline-block py-1 px-3 rounded-full bg-primary-container/10 text-on-primary-container text-label-sm mb-6">Support
+                Center</span>
+            <h1 class="font-display-xl text-display-xl text-on-background mb-4">Get in Touch</h1>
+            <p class="font-body-lg text-body-lg text-secondary max-w-2xl mx-auto mb-4">Have questions or want a demo?
+                We’re here to help.</p>
+            <div class="flex items-center justify-center gap-2 text-primary">
+                <span class="material-symbols-outlined text-[18px]">schedule</span>
+                <span class="text-label-md">We usually respond within a few hours</span>
+            </div>
+        </section>
+        <!-- Contact Cards Section -->
+        <section class="max-w-7xl mx-auto px-8 mb-24">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+                <!-- General Support -->
+                <div
+                    class="bg-white border border-slate-100 p-8 rounded-xl custom-shadow-md hover:translate-y-[-4px] transition-transform duration-300">
+                    <div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-primary" data-icon="help_center">help_center</span>
+                    </div>
+                    <h3 class="font-headline-sm text-headline-sm mb-2">General Support</h3>
+                    <p class="text-secondary mb-8">Help with setup, issues, or usage</p>
+                    <button
+                        class="w-full py-3 px-4 border border-slate-200 rounded-xl font-label-md text-on-surface hover:bg-slate-50 transition-colors">Contact
+                        Support</button>
+                </div>
+                <!-- Sales & Demo -->
+                <div
+                    class="bg-white border border-slate-100 p-8 rounded-xl custom-shadow-md hover:translate-y-[-4px] transition-transform duration-300">
+                    <div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-primary"
+                            data-icon="presentation_play">drive_presentation</span>
+                    </div>
+                    <h3 class="font-headline-sm text-headline-sm mb-2">Sales &amp; Demo</h3>
+                    <p class="text-secondary mb-8">Want a live demo or pricing details?</p>
+                    <button
+                        class="w-full py-3 px-4 bg-primary-container text-on-primary-container rounded-xl font-label-md font-bold shadow-sm hover:opacity-90 transition-opacity">Request
+                        Demo</button>
+                </div>
+                <!-- Partnerships -->
+                <div
+                    class="bg-white border border-slate-100 p-8 rounded-xl custom-shadow-md hover:translate-y-[-4px] transition-transform duration-300">
+                    <div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center mb-6">
+                        <span class="material-symbols-outlined text-primary" data-icon="handshake">handshake</span>
+                    </div>
+                    <h3 class="font-headline-sm text-headline-sm mb-2">Partnerships</h3>
+                    <p class="text-secondary mb-8">Integrations, agencies, or business partnerships</p>
+                    <button
+                        class="w-full py-3 px-4 border border-slate-200 rounded-xl font-label-md text-on-surface hover:bg-slate-50 transition-colors">Contact
+                        Sales</button>
+                </div>
+            </div>
+        </section>
+        <!-- Main Form + Side Panel -->
+        <section class="max-w-7xl mx-auto px-8 mb-24">
+            <div
+                class="grid grid-cols-1 lg:grid-cols-12 gap-12 bg-white rounded-2xl border border-slate-100 overflow-hidden custom-shadow-md">
+                <div class="lg:col-span-8 p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-slate-100">
+                    <h2 class="font-headline-md text-headline-md mb-8">Send us a message</h2>
+                    <form class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-2">
+                                <label class="text-label-md text-on-surface-variant">Full Name</label>
+                                <input
+                                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-slate-400"
+                                    placeholder="Jane Doe" type="text" />
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-label-md text-on-surface-variant">Email</label>
+                                <input
+                                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-slate-400"
+                                    placeholder="jane@company.com" type="email" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="space-y-2">
+                                <label class="text-label-md text-on-surface-variant">Business Name (optional)</label>
+                                <input
+                                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-slate-400"
+                                    placeholder="Acme Inc" type="text" />
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-label-md text-on-surface-variant">Category</label>
+                                <select
+                                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all bg-white">
+                                    <option>Sales</option>
+                                    <option>Support</option>
+                                    <option>Partnership</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-label-md text-on-surface-variant">Message</label>
+                            <textarea
+                                class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-slate-400"
+                                placeholder="How can we help you today?" rows="4"></textarea>
+                        </div>
+                        <button
+                            class="bg-primary-container text-on-primary-container px-8 py-4 rounded-xl font-label-md font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all w-full md:w-auto"
+                            type="submit">Send Message</button>
+                    </form>
+                </div>
+                <div class="lg:col-span-4 p-8 md:p-12 bg-slate-50/50">
+                    <h3 class="font-headline-sm text-headline-sm mb-6">Quick Facts</h3>
+                    <ul class="space-y-6">
+                        <li class="flex items-start gap-4">
+                            <div
+                                class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-primary flex-shrink-0">
+                                <span class="material-symbols-outlined text-[18px]" data-icon="avg_time">avg_time</span>
+                            </div>
+                            <div>
+                                <p class="font-label-md text-on-surface">Response time</p>
+                                <p class="text-label-sm text-secondary">Within 24 hours</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <div
+                                class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-primary flex-shrink-0">
+                                <span class="material-symbols-outlined text-[18px]" data-icon="public">public</span>
+                            </div>
+                            <div>
+                                <p class="font-label-md text-on-surface">Available globally</p>
+                                <p class="text-label-sm text-secondary">Supporting all time zones</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <div
+                                class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-primary flex-shrink-0">
+                                <span class="material-symbols-outlined text-[18px]" data-icon="chat">chat</span>
+                            </div>
+                            <div>
+                                <p class="font-label-md text-on-surface">WhatsApp support available</p>
+                                <p class="text-label-sm text-secondary">Chat directly via our widget</p>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-4">
+                            <div
+                                class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm text-primary flex-shrink-0">
+                                <span class="material-symbols-outlined text-[18px]" data-icon="mail">mail</span>
+                            </div>
+                            <div>
+                                <p class="font-label-md text-on-surface">Email support available</p>
+                                <p class="text-label-sm text-secondary">For detailed documentation</p>
+                            </div>
+                        </li>
+                    </ul>
+                    <div class="mt-12">
+                        <img alt="Workspace"
+                            class="w-full h-48 object-cover rounded-xl grayscale opacity-60 hover:grayscale-0 transition-all duration-500"
+                            data-alt="A clean, professional modern office workspace with multiple high-resolution monitors displaying data analytics. The environment is minimalist with light wood surfaces, white walls, and bright natural lighting coming from large windows. Soft shadows and a high-key aesthetic dominate the scene, evoking efficiency and technological sophistication."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBLu0-RAw9rwHDwtla3mpcfGK-pNjEAF2A6pjaOCZ1MExp9qOIqwWWgkTN71Gd6XLME7qazSINZXXMyGBQix_fk-bTvP525BUecSlzXMkWw_1e1RF37ZEwv9AcxKEN1YIiRl3tRw2IM0PAZEMV2Zc4tYA8IuedevOrB5wwzzNHA3IxRpfanUsbWNZQPpWKv647OrufnhK53BNCGHFELQJSVxnICdaHIerS91ljcrAKXlQi3IrrGZ8VBNW7HVYOMgtf4wmw1wYrh8cQ5" />
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Trust Section -->
+        <section class="max-w-7xl mx-auto px-8 mb-24 text-center">
+            <p class="text-label-sm text-secondary uppercase tracking-widest mb-10">Trusted by growing businesses
+                worldwide</p>
+            <div class="flex flex-wrap justify-center items-center gap-12 md:gap-20 opacity-40 grayscale">
+                <span class="text-headline-sm font-extrabold tracking-tighter">VOLT</span>
+                <span class="text-headline-sm font-extrabold tracking-tighter">ZENITH</span>
+                <span class="text-headline-sm font-extrabold tracking-tighter">ORBIT</span>
+                <span class="text-headline-sm font-extrabold tracking-tighter">PULSE</span>
+                <span class="text-headline-sm font-extrabold tracking-tighter">NEXUS</span>
+            </div>
+        </section>
+        <!-- FAQ Mini Section -->
+        <section class="bg-surface-container-low py-24">
+            <div class="max-w-4xl mx-auto px-8">
+                <h2 class="font-headline-md text-headline-md mb-12 text-center">Frequently Asked Questions</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-2">
+                        <h4 class="font-label-md text-on-surface">How fast do you reply?</h4>
+                        <p class="text-body-md text-secondary">Our average response time is under 2 hours for support
+                            tickets and under 4 hours for sales inquiries during business days.</p>
+                    </div>
+                    <div class="space-y-2">
+                        <h4 class="font-label-md text-on-surface">Can I get a demo before buying?</h4>
+                        <p class="text-body-md text-secondary">Absolutely! Click the "Request Demo" button to schedule a
+                            personalized walkthrough with one of our AI sales experts.</p>
+                    </div>
+                    <div class="space-y-2">
+                        <h4 class="font-label-md text-on-surface">Do you support small businesses?</h4>
+                        <p class="text-body-md text-secondary">Yes, we have pricing tiers specifically designed for
+                            startups and small businesses looking to scale their operations.</p>
+                    </div>
+                    <div class="space-y-2">
+                        <h4 class="font-label-md text-on-surface">Can I integrate multiple WhatsApp numbers?</h4>
+                        <p class="text-body-md text-secondary">Yes, our Enterprise plan allows you to manage multiple
+                            numbers from a single centralized dashboard.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Final CTA -->
+        <section class="max-w-7xl mx-auto px-8 my-32">
+            <div class="relative bg-on-background rounded-3xl p-12 md:p-20 overflow-hidden text-center">
+                <!-- Decorative background elements -->
+                <div
+                    class="absolute top-0 right-0 w-64 h-64 bg-primary rounded-full blur-[100px] opacity-20 -mr-32 -mt-32">
+                </div>
+                <div
+                    class="absolute bottom-0 left-0 w-64 h-64 bg-primary rounded-full blur-[100px] opacity-10 -ml-32 -mb-32">
+                </div>
+                <h2 class="font-display-lg text-display-lg text-white mb-6 relative z-10">Ready to automate your
+                    WhatsApp?</h2>
+                <p class="text-body-lg text-slate-400 mb-10 max-w-xl mx-auto relative z-10">Join 10,000+ sales teams
+                    using AI to close more deals faster.</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center relative z-10">
+                    <button
+                        class="bg-primary-container text-on-primary-container px-10 py-4 rounded-xl font-label-md font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all">Get
+                        Started</button>
+                    <button
+                        class="bg-white/10 text-white border border-white/20 backdrop-blur-md px-10 py-4 rounded-xl font-label-md font-bold hover:bg-white/20 transition-all">Request
+                        Demo</button>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- Footer -->
+    <footer class="bg-slate-50 dark:bg-slate-950 w-full border-t border-slate-200 dark:border-slate-800">
+        <div class="max-w-7xl mx-auto py-12 px-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="font-sans text-xs text-slate-500 dark:text-slate-400 text-center md:text-left">
+                © 2024 WhatsApp AI Sales Assistant. Built for high-velocity teams.
+            </div>
+            <div class="flex items-center gap-6">
+                <a class="font-sans text-xs text-slate-500 dark:text-slate-400 hover:text-emerald-600 transition-colors"
+                    href="#">Privacy Policy</a>
+                <a class="font-sans text-xs text-slate-500 dark:text-slate-400 hover:text-emerald-600 transition-colors"
+                    href="#">Terms of Service</a>
+                <a class="font-sans text-xs text-slate-500 dark:text-slate-400 hover:text-emerald-600 transition-colors"
+                    href="#">Security</a>
+                <a class="font-sans text-xs text-slate-500 dark:text-slate-400 hover:text-emerald-600 transition-colors"
+                    href="#">Status</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-on-primary: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-variant: #dce2f7;
+  --color-on-error-container: #93000a;
+  --color-surface-bright: #f9f9ff;
+  --color-on-tertiary-fixed: #131e19;
+  --color-on-error: #ffffff;
+  --color-surface-container: #e9edff;
+  --color-surface-container-high: #e1e8fd;
+  --color-primary-fixed: #66ff8e;
+  --color-on-primary-fixed: #002109;
+  --color-background: #f9f9ff;
+  --color-on-secondary-fixed: #131b2e;
+  --color-secondary: #565e74;
+  --color-on-tertiary-fixed-variant: #3e4943;
+  --color-primary-fixed-dim: #3de273;
+  --color-on-primary-container: #005523;
+  --color-inverse-primary: #3de273;
+  --color-on-tertiary-container: #3f4b45;
+  --color-surface-container-highest: #dce2f7;
+  --color-secondary-container: #dae2fd;
+  --color-surface-tint: #006d2f;
+  --color-secondary-fixed: #dae2fd;
+  --color-on-primary-fixed-variant: #005322;
+  --color-on-secondary-container: #5c647a;
+  --color-primary: #006d2f;
+  --color-on-surface: #141b2b;
+  --color-tertiary-fixed: #d9e6dd;
+  --color-primary-container: #25d366;
+  --color-tertiary-container: #aebbb3;
+  --color-on-secondary-fixed-variant: #3f465c;
+  --color-surface: #f9f9ff;
+  --color-surface-container-low: #f1f3ff;
+  --color-on-background: #141b2b;
+  --color-on-surface-variant: #3c4a3d;
+  --color-tertiary-fixed-dim: #bdcac1;
+  --color-outline: #6c7b6b;
+  --color-inverse-surface: #293040;
+  --color-inverse-on-surface: #edf0ff;
+  --color-surface-dim: #d3daef;
+  --color-on-secondary: #ffffff;
+  --color-secondary-fixed-dim: #bec6e0;
+  --color-outline-variant: #bbcbb9;
+  --color-tertiary: #55615a;
+  --color-error-container: #ffdad6;
+  --color-on-tertiary: #ffffff;
+  --color-error: #ba1a1a;
+
+  /* Spacing */
+  --spacing-section-padding-md: 80px;
+  --spacing-element-gap: 16px;
+  --spacing-gutter: 24px;
+  --spacing-section-padding-lg: 120px;
+  --spacing-unit: 8px;
+  --spacing-container-max: 1200px;
+
+  /* Font Sizes */
+  --font-size-headline-md: 30px;
+  --font-size-display-xl: 60px;
+  --font-size-headline-sm: 24px;
+  --font-size-body-md: 16px;
+  --font-size-label-md: 14px;
+  --font-size-display-lg: 48px;
+  --font-size-body-lg: 18px;
+  --font-size-label-sm: 12px;
+
+  /* Font Family */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-surface font-sans text-on-surface;
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.whatsapp-bubble-ai {
+  border-radius: 0 12px 12px 12px;
+}
+
+.whatsapp-bubble-user {
+  border-radius: 12px 0 12px 12px;
+}
+
+.whatsapp-chat-bg {
+  background-color: #e5ddd5;
+  background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuAd2bFKWpddSF8x3pv1HryNbG48l0u3ADVB769oAcT_FNXqyVHl-KHAvNIrL1blhd0fN2laqy86jEFcJJY5LRl6yqiNujNs1srQ4h29aEbc4ptrvsEvhgoL9gE80X5UbG18sih7hGQkFXGC9pabjOoA9N6HwtNWENYY67oZNqmXl8i8AVcmNi5w4wNiszLdxRiJtotUxWRDKuDjvOTRlaRJaSgQrHJPK77Ar-vAv8yTJ3WF-hw81xdL0kPyuZFGVOC6JFYw-FtJsU_S);
+}
+
+.soft-card-shadow {
+  box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}
+
+.btn-inner-shadow {
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 4px 6px rgba(0, 0, 0, 0.1);
+}

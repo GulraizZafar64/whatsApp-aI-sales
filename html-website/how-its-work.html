@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed-variant": "#3f465c",
+                        "on-surface-variant": "#3c4a3d",
+                        "on-error-container": "#93000a",
+                        "on-surface": "#141b2b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-error": "#ffffff",
+                        "secondary": "#565e74",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed": "#131e19",
+                        "inverse-on-surface": "#edf0ff",
+                        "primary": "#006d2f",
+                        "surface-tint": "#006d2f",
+                        "inverse-primary": "#3de273",
+                        "on-secondary-fixed": "#131b2e",
+                        "secondary-container": "#dae2fd",
+                        "inverse-surface": "#293040",
+                        "error": "#ba1a1a",
+                        "surface-dim": "#d3daef",
+                        "secondary-fixed-dim": "#bec6e0",
+                        "surface-bright": "#f9f9ff",
+                        "tertiary": "#55615a",
+                        "background": "#f9f9ff",
+                        "error-container": "#ffdad6",
+                        "primary-fixed-dim": "#3de273",
+                        "tertiary-fixed": "#d9e6dd",
+                        "surface-variant": "#dce2f7",
+                        "outline": "#6c7b6b",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-high": "#e1e8fd",
+                        "on-tertiary-container": "#3f4b45",
+                        "surface": "#f9f9ff",
+                        "on-primary-fixed": "#002109",
+                        "surface-container-low": "#f1f3ff",
+                        "on-tertiary-fixed-variant": "#3e4943",
+                        "outline-variant": "#bbcbb9",
+                        "surface-container-highest": "#dce2f7",
+                        "secondary-fixed": "#dae2fd",
+                        "on-secondary-container": "#5c647a",
+                        "primary-fixed": "#66ff8e",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#e9edff",
+                        "primary-container": "#25d366",
+                        "tertiary-container": "#aebbb3",
+                        "on-primary-fixed-variant": "#005322",
+                        "tertiary-fixed-dim": "#bdcac1",
+                        "on-primary-container": "#005523",
+                        "on-background": "#141b2b"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section-padding-lg": "120px",
+                        "element-gap": "16px",
+                        "unit": "8px",
+                        "section-padding-md": "80px",
+                        "gutter": "24px",
+                        "container-max": "1200px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "display-xl": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.03em", "fontWeight": "600" }],
+                        "display-xl": ["60px", { "lineHeight": "72px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-sm": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+                        "headline-md": ["30px", { "lineHeight": "38px", "letterSpacing": "-0.01em", "fontWeight": "600" }]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .glass-nav {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .soft-shadow {
+            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+        }
+
+        .whatsapp-bubble-customer {
+            border-radius: 12px 12px 0 12px;
+        }
+
+        .whatsapp-bubble-ai {
+            border-radius: 12px 12px 12px 0;
+        }
+    </style>
+</head>
+
+<body class="bg-surface font-body-md text-on-surface antialiased">
+    <!-- Top Navigation Bar -->
+    <nav
+        class="fixed top-0 w-full z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 shadow-sm font-['Inter'] antialiased">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+            <div class="text-xl font-bold tracking-tight text-gray-900 dark:text-white">WhatsApp AI</div>
+            <div class="hidden md:flex items-center gap-8">
+                <a class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors text-label-md font-body-md"
+                    href="#">Features</a>
+                <a class="text-emerald-600 dark:text-emerald-400 font-semibold text-label-md font-body-md" href="#">How
+                    It Works</a>
+                <a class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors text-label-md font-body-md"
+                    href="#">Pricing</a>
+                <a class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors text-label-md font-body-md"
+                    href="#">Solutions</a>
+            </div>
+            <div class="flex items-center gap-4">
+                <button
+                    class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors text-label-md font-body-md active:scale-95 duration-200">Log
+                    In</button>
+                <button
+                    class="bg-primary-container text-on-primary-container px-4 py-2 rounded-lg font-semibold text-label-md active:scale-95 duration-200 hover:bg-opacity-90 transition-all">Get
+                    Started</button>
+            </div>
+        </div>
+    </nav>
+    <main class="pt-24">
+        <!-- Hero Section -->
+        <section class="max-w-[1200px] mx-auto px-gutter py-section-padding-md text-center">
+            <span
+                class="inline-block px-4 py-1 rounded-full bg-primary-container/10 text-on-primary-container text-label-sm mb-6">Simple
+                Integration</span>
+            <h1 class="font-display-xl text-display-xl text-on-surface mb-6">How It Works</h1>
+            <p class="font-headline-sm text-headline-sm text-on-surface-variant max-w-2xl mx-auto mb-4">Start automating
+                your WhatsApp in minutes</p>
+            <p class="font-body-lg text-body-lg text-outline max-w-xl mx-auto">No technical skills required. Set up once
+                and let AI handle your customer conversations while you focus on growth.</p>
+        </section>
+        <!-- Step-by-Step Process (Bento Grid Style) -->
+        <section class="max-w-[1200px] mx-auto px-gutter py-section-padding-md">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+                <!-- Step 1 -->
+                <div
+                    class="md:col-span-7 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 soft-shadow flex flex-col md:flex-row gap-8 items-center">
+                    <div class="flex-1 order-2 md:order-1">
+                        <span class="font-display-lg text-primary/20 text-display-lg block mb-2">01</span>
+                        <h3 class="font-headline-md text-headline-md mb-4">Connect Your WhatsApp</h3>
+                        <p class="text-body-md text-on-surface-variant">Link your WhatsApp Business account securely in
+                            a few clicks. Simply scan a QR code just like WhatsApp Web.</p>
+                    </div>
+                    <div
+                        class="w-full md:w-64 bg-surface-container rounded-lg p-6 flex flex-col items-center order-1 md:order-2 border border-outline-variant/20">
+                        <div class="w-40 h-40 bg-white p-2 rounded shadow-inner mb-4 relative">
+                            <img alt="QR Code" class="w-full h-full opacity-80"
+                                data-alt="A clean and professional digital QR code displayed on a high-resolution smartphone screen mockup. The surrounding environment is a bright, minimalist workspace with soft natural lighting and emerald green accents that match the WhatsApp AI Sales Assistant brand identity. The focus is sharp on the QR code, symbolizing secure and instant connectivity."
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDzYoT9B8bAGsirfSckQlvY28_JRMPC-ARMjxBNTJL1uccKOkYBH5o2NTDvZmKrBe-dHbuWNsG5_z_lJzECoUhLJU4HRybThDHrRQAbSnzfEIDxYowaXh6WfMJAH7IJHCuRFKKIx2LZr7VXn-vUyv0CLEjah7Cz9y9odBn_D8RTZmOOU8dHws_KlVaNDcaHZwTZQsayB0aVj6S_HTkdPeYld3pHxNjvjpkRf4hJvrXHX1marWFh4aEGx0dRGrM2djfJcNPh6FtH3BSa" />
+                            <div class="absolute inset-0 border-2 border-primary/20 animate-pulse rounded"></div>
+                        </div>
+                        <span class="text-label-sm text-outline">Scan to link account</span>
+                    </div>
+                </div>
+                <!-- Step 2 -->
+                <div
+                    class="md:col-span-5 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 soft-shadow">
+                    <span class="font-display-lg text-primary/20 text-display-lg block mb-2">02</span>
+                    <h3 class="font-headline-md text-headline-md mb-4">Add Your Products</h3>
+                    <p class="text-body-md text-on-surface-variant mb-8">Upload products, prices, and FAQs so the AI
+                        knows your business inside out.</p>
+                    <div class="space-y-3">
+                        <div class="bg-white p-3 rounded-lg border border-outline-variant/20 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary"
+                                data-icon="inventory_2">inventory_2</span>
+                            <div class="flex-1 h-2 bg-surface-container rounded-full overflow-hidden">
+                                <div class="w-3/4 h-full bg-primary"></div>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-white p-3 rounded-lg border border-outline-variant/20 flex items-center gap-3 opacity-60">
+                            <span class="material-symbols-outlined text-primary" data-icon="payments">payments</span>
+                            <div class="flex-1 h-2 bg-surface-container rounded-full overflow-hidden">
+                                <div class="w-1/2 h-full bg-primary"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Step 3 -->
+                <div
+                    class="md:col-span-5 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 soft-shadow flex flex-col justify-between">
+                    <div>
+                        <span class="font-display-lg text-primary/20 text-display-lg block mb-2">03</span>
+                        <h3 class="font-headline-md text-headline-md mb-4">AI Understands Intent</h3>
+                        <p class="text-body-md text-on-surface-variant">Our AI reads and understands what your customers
+                            are asking in real time, no matter the phrasing.</p>
+                    </div>
+                    <div class="mt-8 flex flex-col gap-2">
+                        <div
+                            class="bg-surface-container p-3 rounded-xl whatsapp-bubble-customer self-end max-w-[80%] text-label-md">
+                            "Do you have this in blue?"
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <span class="material-symbols-outlined text-primary animate-bounce"
+                                data-icon="psychology">psychology</span>
+                            <span class="text-label-sm text-outline italic">Analyzing intent...</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Step 4 & 5 Combined Feature -->
+                <div class="md:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div
+                        class="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 soft-shadow">
+                        <span class="font-display-lg text-primary/20 text-display-lg block mb-2">04</span>
+                        <h3 class="font-headline-md text-headline-md mb-4">Instant Smart Replies</h3>
+                        <p class="text-body-md text-on-surface-variant">The AI replies instantly with accurate answers
+                            and guides customers to place orders.</p>
+                    </div>
+                    <div
+                        class="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 soft-shadow">
+                        <span class="font-display-lg text-primary/20 text-display-lg block mb-2">05</span>
+                        <h3 class="font-headline-md text-headline-md mb-4">Capture Orders</h3>
+                        <p class="text-body-md text-on-surface-variant">Automatically collect customer details and
+                            manage orders without manual effort.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Example Conversation (Specialized Component) -->
+        <section class="bg-surface-container-low py-section-padding-lg">
+            <div class="max-w-[1200px] mx-auto px-gutter grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+                <div>
+                    <h2 class="font-display-lg text-display-lg mb-6">See It In Action</h2>
+                    <p class="text-body-lg text-on-surface-variant mb-10">Experience the seamless flow of an AI-driven
+                        sales conversation. It's like having your best salesperson working 24/7.</p>
+                    <div class="space-y-6">
+                        <div class="flex items-start gap-4">
+                            <div
+                                class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+                                <span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+                            </div>
+                            <div>
+                                <h4 class="font-headline-sm text-headline-sm mb-1">24/7 Response</h4>
+                                <p class="text-on-surface-variant">Never let a lead go cold, even while you sleep.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4">
+                            <div
+                                class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+                                <span class="material-symbols-outlined" data-icon="trending_up">trending_up</span>
+                            </div>
+                            <div>
+                                <h4 class="font-headline-sm text-headline-sm mb-1">Higher Conversion</h4>
+                                <p class="text-on-surface-variant">Prompt replies lead to faster purchase decisions.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-3xl soft-shadow overflow-hidden border border-outline-variant/20">
+                    <!-- WhatsApp Header -->
+                    <div class="bg-[#075E54] p-4 flex items-center justify-between text-white">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                                <span class="material-symbols-outlined" data-icon="person">person</span>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-label-md">Customer Support</p>
+                                <p class="text-[10px] opacity-80">Online</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4">
+                            <span class="material-symbols-outlined" data-icon="videocam">videocam</span>
+                            <span class="material-symbols-outlined" data-icon="call">call</span>
+                        </div>
+                    </div>
+                    <!-- Chat Area -->
+                    <div class="p-6 space-y-4 bg-[#E5DDD5] h-[400px] flex flex-col">
+                        <div
+                            class="bg-white p-3 whatsapp-bubble-customer self-start max-w-[85%] text-body-md shadow-sm">
+                            Do you have black shoes?
+                            <span class="block text-[10px] text-outline text-right mt-1">10:42 AM</span>
+                        </div>
+                        <div class="bg-[#DCF8C6] p-3 whatsapp-bubble-ai self-end max-w-[85%] text-body-md shadow-sm">
+                            Yes 👍 Black Running Shoes are available for $50. Want to order?
+                            <span class="block text-[10px] text-outline text-right mt-1">10:42 AM</span>
+                        </div>
+                        <div
+                            class="bg-white p-3 whatsapp-bubble-customer self-start max-w-[85%] text-body-md shadow-sm">
+                            Yes, I want them.
+                            <span class="block text-[10px] text-outline text-right mt-1">10:43 AM</span>
+                        </div>
+                        <div class="bg-[#DCF8C6] p-3 whatsapp-bubble-ai self-end max-w-[85%] text-body-md shadow-sm">
+                            Great! Please provide your delivery address and name to complete the order.
+                            <span class="block text-[10px] text-outline text-right mt-1">10:43 AM</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Trust Section -->
+        <section class="max-w-[1200px] mx-auto px-gutter py-section-padding-md text-center">
+            <h2 class="text-label-sm font-label-sm text-outline uppercase tracking-widest mb-10">Built for real
+                businesses</h2>
+            <div class="flex flex-wrap justify-center items-center gap-12 opacity-40 grayscale">
+                <div class="flex items-center gap-2 font-bold text-headline-sm">
+                    <span class="material-symbols-outlined" data-icon="shopping_bag">shopping_bag</span> RETAILPRO
+                </div>
+                <div class="flex items-center gap-2 font-bold text-headline-sm">
+                    <span class="material-symbols-outlined" data-icon="restaurant">restaurant</span> EATWELL
+                </div>
+                <div class="flex items-center gap-2 font-bold text-headline-sm">
+                    <span class="material-symbols-outlined" data-icon="fitness_center">fitness_center</span> GYMHUB
+                </div>
+                <div class="flex items-center gap-2 font-bold text-headline-sm">
+                    <span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span> LOGISTIX
+                </div>
+            </div>
+        </section>
+        <!-- Final CTA -->
+        <section class="max-w-[1200px] mx-auto px-gutter mb-section-padding-lg">
+            <div class="bg-primary p-12 md:p-20 rounded-[2rem] text-center text-white relative overflow-hidden">
+                <div
+                    class="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-primary-container/20 rounded-full blur-3xl">
+                </div>
+                <div
+                    class="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-96 h-96 bg-primary-fixed-dim/10 rounded-full blur-3xl">
+                </div>
+                <div class="relative z-10">
+                    <h2 class="font-display-lg text-display-lg mb-4">Start Automating Your WhatsApp Today</h2>
+                    <p class="font-body-lg text-body-lg mb-10 text-white/80">Set up in minutes and never miss a sale
+                        again</p>
+                    <button
+                        class="bg-white text-primary px-10 py-4 rounded-xl font-bold text-body-lg hover:shadow-xl transition-all active:scale-95 duration-200">
+                        Get Started
+                    </button>
+                    <p class="mt-6 text-label-sm text-white/60">No credit card required • 14-day free trial</p>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- Footer -->
+    <footer
+        class="w-full py-12 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 text-sm font-['Inter']">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="text-lg font-bold text-gray-900 dark:text-white">WhatsApp AI</div>
+            <div class="flex gap-8">
+                <a class="text-gray-500 dark:text-gray-400 hover:text-emerald-500 transition-colors"
+                    href="#">Privacy</a>
+                <a class="text-gray-500 dark:text-gray-400 hover:text-emerald-500 transition-colors" href="#">Terms</a>
+                <a class="text-gray-500 dark:text-gray-400 hover:text-emerald-500 transition-colors"
+                    href="#">Security</a>
+                <a class="text-gray-500 dark:text-gray-400 hover:text-emerald-500 transition-colors" href="#">Status</a>
+                <a class="text-gray-500 dark:text-gray-400 hover:text-emerald-500 transition-colors"
+                    href="#">Contact</a>
+            </div>
+            <p class="text-gray-500 dark:text-gray-400">© 2024 WhatsApp AI Sales Assistant. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+
+</html>
