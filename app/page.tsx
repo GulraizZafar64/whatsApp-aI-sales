@@ -11,7 +11,7 @@ export default function LandingPage() {
               <span className="material-symbols-outlined text-[16px] mr-2">bolt</span>
               New: Multi-language Support v2.0
             </div>
-            <h1 className="font-display-xl text-display-xl text-on-background">
+            <h1 className="text-display-xl text-on-background">
               Turn Your WhatsApp Into a <span className="text-primary">24/7 Sales Assistant</span>
             </h1>
             <p className="text-body-lg text-secondary max-w-lg">
