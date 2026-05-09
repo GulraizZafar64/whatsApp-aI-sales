@@ -15,48 +15,45 @@ export async function POST(request: Request) {
     // For MVP, we can use the user token to fetch business info
 
     // Step 2: Fetch WhatsApp Business Accounts (WABA)
-    // We'll try to fetch directly from the whatsapp_business_accounts edge first
-    let wabaResponse = await fetch(
-      `https://graph.facebook.com/v21.0/me/whatsapp_business_accounts?access_token=${accessToken}`
+    // We will use the /debug_token endpoint to inspect the granted target_ids for whatsapp_business_management
+    const appAccessToken = `${META_APP_ID}|${META_APP_SECRET}`;
+    
+    const debugResponse = await fetch(
+      `https://graph.facebook.com/v21.0/debug_token?input_token=${accessToken}&access_token=${appAccessToken}`
     );
-    let wabaData = await wabaResponse.json();
+    const debugData = await debugResponse.json();
 
-    console.log("Meta WABA Response:", JSON.stringify(wabaData, null, 2));
+    console.log("Meta Debug Token Response:", JSON.stringify(debugData, null, 2));
 
-    // If direct edge fails, try the /me endpoint with fields
-    if (wabaData.error && wabaData.error.code === 100) {
-      console.log("Direct edge failed, trying /me endpoint...");
-      wabaResponse = await fetch(
-        `https://graph.facebook.com/v21.0/me?fields=id,name,whatsapp_business_accounts&access_token=${accessToken}`
+    if (debugData.error || !debugData.data || !debugData.data.is_valid) {
+      return NextResponse.json({
+        error: "Invalid access token or token expired.",
+        meta_debug: debugData
+      }, { status: 400 });
+    }
+
+    let wabaIds: string[] = [];
+
+    // Find the granular scope for whatsapp_business_management
+    if (debugData.data.granular_scopes) {
+      const wabaScope = debugData.data.granular_scopes.find(
+        (scope: any) => scope.scope === "whatsapp_business_management"
       );
-      wabaData = await wabaResponse.json();
+      if (wabaScope && wabaScope.target_ids) {
+        wabaIds = wabaScope.target_ids;
+      }
     }
 
-    // Check for the specific error about non-existing field
-    if (wabaData.error && wabaData.error.code === 100) {
+    // Fallback: If no granular scopes are returned, we might not have specific target IDs,
+    // but without target IDs we can't fetch WABA directly. The new granular scopes flow is required.
+    if (wabaIds.length === 0) {
       return NextResponse.json({
-        error: "Meta API Restriction: Your Meta App is likely not a 'Business' app type. To fix this, go to Meta Developers Dashboard -> App Settings -> Basic and ensure 'App Type' is set to 'Business'. Also ensure you have added the 'WhatsApp' product to your app.",
-        meta_debug: wabaData
-      }, { status: 400 });
-    }
-
-    if (wabaData.error) {
-      return NextResponse.json({
-        error: `Meta API Error: ${wabaData.error.message}`,
-        meta_debug: wabaData
-      }, { status: 400 });
-    }
-
-    const accounts = wabaData.data || wabaData.whatsapp_business_accounts?.data;
-
-    if (!accounts || accounts.length === 0) {
-      return NextResponse.json({
-        error: "No WhatsApp Business Accounts found. Please ensure you have a WhatsApp Business Account and that you granted permission to access it in the Meta popup.",
-        meta_debug: wabaData
+        error: "No WhatsApp Business Accounts found. Please ensure you have created a WABA and selected it during the Meta authorization popup.",
+        meta_debug: debugData
       }, { status: 404 });
     }
 
-    const businessAccountId = accounts[0].id;
+    const businessAccountId = wabaIds[0];
 
     // Step 3: Fetch Phone Numbers for this WABA
     const phoneResponse = await fetch(
