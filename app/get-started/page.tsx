@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { db, auth } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 
 declare global {
   interface Window {
@@ -146,12 +146,24 @@ export default function GetStartedPage() {
 
       const data = await response.json();
       if (response.ok) {
+        // Check if this account is already registered
+        const q = query(collection(db, "businesses"), where("phoneNumberId", "==", data.phoneNumberId));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          localStorage.setItem("whatsappToken", data.accessToken);
+          window.dispatchEvent(new Event("authChange"));
+          toast.success("Welcome back! Your account is already set up.");
+          router.push("/dashboard");
+          return;
+        }
+
         setFormData(prev => ({
           ...prev,
           whatsappToken: data.accessToken,
           phoneNumberId: data.phoneNumberId,
           businessAccountId: data.businessAccountId,
-          whatsappNumber: data.whatsappNumber || prev.whatsappNumber
+          whatsappNumber: prev.whatsappNumber || data.whatsappNumber
         }));
         setTestResult({ success: true, message: "Successfully connected via Meta!" });
         
@@ -251,6 +263,7 @@ export default function GetStartedPage() {
         timeoutPromise
       ]);
       localStorage.setItem("whatsappToken", formData.whatsappToken);
+      window.dispatchEvent(new Event("authChange"));
       toast.success("Setup complete! Your AI assistant is now ready.");
       router.push("/dashboard");
     } catch (error: any) {
@@ -337,6 +350,17 @@ export default function GetStartedPage() {
                         onChange={handleInputChange}
                         className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest transition-all outline-none"
                         placeholder="e.g. Acme Coffee Roasters"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-label-md text-on-surface font-bold tracking-tight">WhatsApp Business Number</label>
+                      <input
+                        name="whatsappNumber"
+                        value={formData.whatsappNumber}
+                        onChange={handleInputChange}
+                        className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest transition-all outline-none"
+                        placeholder="e.g. +1 234 567 8900"
                         type="text"
                       />
                     </div>
@@ -468,6 +492,16 @@ export default function GetStartedPage() {
                               onChange={handleInputChange}
                               className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
                               placeholder="e.g. 1029384756"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-secondary uppercase">WhatsApp Number</label>
+                            <input
+                              name="whatsappNumber"
+                              value={formData.whatsappNumber}
+                              onChange={handleInputChange}
+                              className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
+                              placeholder="e.g. +1 234 567 8900"
                             />
                           </div>
                           <div className="space-y-1.5">

@@ -87,6 +87,7 @@ export default function SignInPage() {
 
       if (response.ok) {
         localStorage.setItem("whatsappToken", accessToken);
+        window.dispatchEvent(new Event("authChange"));
         toast.success("Successfully logged in!");
         router.push("/dashboard");
       } else {
