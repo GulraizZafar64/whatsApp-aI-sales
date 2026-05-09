@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+import { db, auth } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 declare global {
   interface Window {
@@ -29,6 +33,7 @@ type FormData = {
 };
 
 export default function GetStartedPage() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
     businessName: "",
@@ -149,6 +154,11 @@ export default function GetStartedPage() {
           whatsappNumber: data.whatsappNumber || prev.whatsappNumber
         }));
         setTestResult({ success: true, message: "Successfully connected via Meta!" });
+        
+        // Auto-advance to the next step after a short delay
+        setTimeout(() => {
+          setCurrentStep((prev) => Math.min(prev + 1, 4));
+        }, 1500);
       } else {
         setTestResult({ success: false, message: data.error || "Failed to sync Meta account" });
       }
@@ -223,9 +233,6 @@ export default function GetStartedPage() {
   const finishSetup = async () => {
     setIsSubmitting(true);
     try {
-      const { db, auth } = await import("@/lib/firebase");
-      const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
-      
       const user = auth.currentUser;
       const dataToSave = {
         ...formData,
@@ -234,11 +241,21 @@ export default function GetStartedPage() {
         status: "active"
       };
 
-      await addDoc(collection(db, "businesses"), dataToSave);
-      alert("Setup complete! Your AI assistant is now ready.");
-    } catch (error) {
+      // Add a timeout to prevent hanging if Firestore cannot connect
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Firestore connection timed out. Please check your database settings.")), 10000)
+      );
+
+      await Promise.race([
+        addDoc(collection(db, "businesses"), dataToSave),
+        timeoutPromise
+      ]);
+      localStorage.setItem("whatsappToken", formData.whatsappToken);
+      toast.success("Setup complete! Your AI assistant is now ready.");
+      router.push("/dashboard");
+    } catch (error: any) {
       console.error("Error saving setup:", error);
-      alert("Failed to save setup. Please try again.");
+      toast.error(error.message || "Failed to save setup. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -384,22 +401,29 @@ export default function GetStartedPage() {
                       </div>
                       
                       <div className="flex flex-col items-center gap-4 w-full">
-                        <button 
-                          onClick={launchWhatsAppSignup}
-                          disabled={isMetaLoading || !isFbInitialized || isTesting}
-                          className="w-full max-w-sm bg-primary text-white px-10 py-5 rounded-2xl text-title-md font-bold shadow-2xl shadow-primary/30 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                        >
-                          {isTesting ? (
-                            <>
-                              <span className="animate-spin h-6 w-6 border-3 border-white border-t-transparent rounded-full"></span>
-                              Connecting...
-                            </>
-                          ) : (
-                            <>
-                              👉 Connect WhatsApp
-                            </>
-                          )}
-                        </button>
+                        {formData.whatsappToken && testResult?.success ? (
+                          <div className="w-full max-w-sm bg-success/10 text-success border border-success/20 px-10 py-5 rounded-2xl text-title-md font-bold flex items-center justify-center gap-3 transition-all">
+                            <span className="material-symbols-outlined text-2xl">check_circle</span>
+                            Connected
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={launchWhatsAppSignup}
+                            disabled={isMetaLoading || !isFbInitialized || isTesting}
+                            className="w-full max-w-sm bg-primary text-white px-10 py-5 rounded-2xl text-title-md font-bold shadow-2xl shadow-primary/30 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                          >
+                            {isTesting ? (
+                              <>
+                                <span className="animate-spin h-6 w-6 border-3 border-white border-t-transparent rounded-full"></span>
+                                Connecting...
+                              </>
+                            ) : (
+                              <>
+                                👉 Connect WhatsApp
+                              </>
+                            )}
+                          </button>
+                        )}
                         <p className="text-label-md text-secondary flex items-center gap-2">
                           <svg className="w-4 h-4 fill-secondary" viewBox="0 0 24 24">
                             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
@@ -408,19 +432,23 @@ export default function GetStartedPage() {
                         </p>
                       </div>
 
-                      <button 
-                        onClick={nextStep}
-                        className="text-label-md font-bold text-outline hover:text-on-surface transition-colors mt-2"
-                      >
-                        Skip for now
-                      </button>
+                      {!(formData.whatsappToken && testResult?.success) && (
+                        <>
+                          <button 
+                            onClick={nextStep}
+                            className="text-label-md font-bold text-outline hover:text-on-surface transition-colors mt-2"
+                          >
+                            Skip for now
+                          </button>
 
-                      <button 
-                        onClick={() => setTestResult({ success: false, message: "MANUAL_SETUP" })}
-                        className="text-[10px] text-outline hover:underline mt-4"
-                      >
-                        Trouble connecting? Use manual setup instead
-                      </button>
+                          <button 
+                            onClick={() => setTestResult({ success: false, message: "MANUAL_SETUP" })}
+                            className="text-[10px] text-outline hover:underline mt-4"
+                          >
+                            Trouble connecting? Use manual setup instead
+                          </button>
+                        </>
+                      )}
                     </div>
 
                     {testResult?.message === "MANUAL_SETUP" && (

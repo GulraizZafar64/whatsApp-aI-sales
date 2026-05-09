@@ -1,6 +1,105 @@
+"use client";
+
 import Link from "next/link";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+
+declare global {
+  interface Window {
+    fbAsyncInit: () => void;
+    FB: any;
+  }
+}
 
 export default function SignInPage() {
+  const [isMetaLoading, setIsMetaLoading] = useState(true);
+  const [isFbInitialized, setIsFbInitialized] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (window.FB) {
+      setIsMetaLoading(false);
+      setIsFbInitialized(true);
+      return;
+    }
+
+    window.fbAsyncInit = function() {
+      window.FB.init({
+        appId: process.env.NEXT_PUBLIC_META_APP_ID,
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: 'v21.0'
+      });
+      setIsMetaLoading(false);
+      setIsFbInitialized(true);
+    };
+
+    (function(d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s) as HTMLScriptElement; js.id = id;
+      js.src = "https://connect.facebook.net/en_US/sdk.js";
+      fjs.parentNode?.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));
+  }, []);
+
+  const handleWhatsAppLogin = () => {
+    if (typeof window === 'undefined') return;
+
+    if (!window.FB || !isFbInitialized) {
+      toast.error("Meta SDK is not initialized yet. Please wait a moment.");
+      return;
+    }
+
+    setIsLoggingIn(true);
+
+    try {
+      window.FB.login(
+        (response: any) => {
+          if (response.authResponse) {
+            // Check connection and then redirect
+            verifyConnection(response.authResponse.accessToken);
+          } else {
+            setIsLoggingIn(false);
+            toast.error("Login cancelled or not authorized.");
+          }
+        },
+        {
+          scope: "whatsapp_business_management,whatsapp_business_messaging,public_profile",
+          return_scopes: true
+        }
+      );
+    } catch (err: any) {
+      setIsLoggingIn(false);
+      toast.error(`Meta Error: ${err.message || "Failed to open login popup"}`);
+    }
+  };
+
+  const verifyConnection = async (accessToken: string) => {
+    try {
+      const response = await fetch("/api/whatsapp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken }),
+      });
+
+      if (response.ok) {
+        localStorage.setItem("whatsappToken", accessToken);
+        toast.success("Successfully logged in!");
+        router.push("/dashboard");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to verify Meta account");
+        setIsLoggingIn(false);
+      }
+    } catch (error) {
+      toast.error("Error connecting to server");
+      setIsLoggingIn(false);
+    }
+  };
+
   return (
     <main className="min-h-screen flex flex-col md:flex-row overflow-hidden pt-16 md:pt-0">
       {/* Left Side: Visual Content */}
@@ -98,65 +197,30 @@ export default function SignInPage() {
               <h2 className="text-headline-md text-on-surface mb-2">Welcome Back 👋</h2>
               <p className="text-body-md text-on-secondary-container">Sign in to your WhatsApp AI dashboard</p>
             </header>
-            {/* Form */}
-            <form className="space-y-6">
-              <div>
-                <label className="block font-medium text-on-surface mb-2" htmlFor="email">
-                  Email Address
-                </label>
-                <input
-                  className="w-full px-4 py-3 bg-surface-container-lowest border border-gray-200 rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container focus:border-primary-container transition-all"
-                  id="email"
-                  placeholder="name@company.com"
-                  type="email"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="font-medium text-on-surface" htmlFor="password">
-                    Password
-                  </label>
-                  <Link className="text-label-sm text-primary hover:underline transition-all" href="/forgot-password">
-                    Forgot Password?
-                  </Link>
-                </div>
-                <input
-                  className="w-full px-4 py-3 bg-surface-container-lowest border border-gray-200 rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container focus:border-primary-container transition-all"
-                  id="password"
-                  placeholder="••••••••"
-                  type="password"
-                />
-              </div>
-              <button className="w-full py-4 bg-primary-container text-on-primary-container font-bold rounded-lg shadow-sm hover:opacity-90 active:scale-[0.98] transition-all" type="submit">
-                Sign In
-              </button>
-            </form>
-            {/* Divider */}
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-100"></div>
-              </div>
-              <div className="relative flex justify-center text-label-sm uppercase">
-                <span className="bg-white px-4 text-gray-400">Or continue with</span>
-              </div>
-            </div>
-            {/* Social Login */}
-            <div className="space-y-3">
-              <button className="w-full flex items-center justify-center gap-3 py-3 border border-gray-200 rounded-lg font-medium text-on-surface hover:bg-gray-50 transition-all">
-                <img
-                  alt="Google"
-                  className="w-5 h-5"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuCf2W8vIHFRZTT7NdQ0KdFgVAUJ_HnzGu4C_roQ9-I3J8KBebQvcAH_dOiBGV_a9BaI1GNiHdB8bNvcGIg5qIe96G07TSiX5wVXaIcxIrquBpsYePaGAR2FQeS7_Aw0DFpAx3elPTBi15EdMSaUNOX3WJ92wm5KpD5Jp4pNwoyS59L8WANw_CWtacCn5xdjVputgmGaonUblHnk0Jc8m78717IeHV5kFj1O3DA9EEDFiesnHBt4NoDlns8FI7H6188MNcDTCLH50o2L"
-                />
-                Continue with Google
-              </button>
-              <button className="w-full flex items-center justify-center gap-3 py-3 border border-gray-200 rounded-lg font-medium text-on-surface hover:bg-gray-50 transition-all">
-                <span className="material-symbols-outlined text-[20px] text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  chat
-                </span>
-                Continue with WhatsApp
+            
+            {/* Login Action */}
+            <div className="py-6">
+              <button 
+                onClick={handleWhatsAppLogin}
+                disabled={isMetaLoading || !isFbInitialized || isLoggingIn}
+                className="w-full flex items-center justify-center gap-3 py-4 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl font-bold shadow-lg shadow-[#25D366]/20 active:scale-[0.98] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isLoggingIn ? (
+                  <>
+                    <span className="animate-spin h-6 w-6 border-3 border-white border-t-transparent rounded-full"></span>
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-6 h-6 fill-white" viewBox="0 0 24 24">
+                      <path d="M12.075 0C5.405 0 0 5.405 0 12.075c0 2.13.555 4.125 1.515 5.865L.03 23.505l5.745-1.515a11.96 11.96 0 006.3 1.785c6.67 0 12.075-5.405 12.075-12.075C24.15 5.405 18.745 0 12.075 0zm0 22.065a9.92 9.92 0 01-5.07-1.38l-.36-.21-3.765.99.99-3.66-.24-.375a9.92 9.92 0 01-1.53-5.355c0-5.505 4.47-9.975 9.975-9.975 5.505 0 9.975 4.47 9.975 9.975s-4.47 9.975-9.975 9.975z"/>
+                    </svg>
+                    Continue with WhatsApp
+                  </>
+                )}
               </button>
             </div>
+            
             {/* Signup Link */}
             <p className="mt-8 text-center text-on-secondary-container">
               Don&apos;t have an account?{" "}

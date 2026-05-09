@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/firebase";
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "whatsapp_ai_assistant_verify_token";
 
@@ -34,6 +36,16 @@ export async function POST(request: Request) {
         const msgBody = message.text?.body; // extract the message text
 
         console.log(`Received message from ${from}: ${msgBody}`);
+
+        // Save incoming message to Firestore
+        await addDoc(collection(db, "messages"), {
+          businessPhoneNumberId,
+          from,
+          text: msgBody,
+          type: "incoming",
+          status: "unread",
+          timestamp: serverTimestamp()
+        });
 
         // TODO: Logic to process message with AI and reply back
         // 1. Fetch business config from Firestore using businessPhoneNumberId
