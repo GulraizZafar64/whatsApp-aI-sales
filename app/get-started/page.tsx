@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+
+declare global {
+  interface Window {
+    fbAsyncInit: () => void;
+    FB: any;
+  }
+}
 
 type Product = {
   name: string;
@@ -13,6 +20,9 @@ type FormData = {
   businessType: string;
   country: string;
   whatsappNumber: string;
+  whatsappToken: string;
+  phoneNumberId: string;
+  businessAccountId: string;
   products: Product[];
   businessDescription: string;
   replyTone: string;
@@ -25,10 +35,129 @@ export default function GetStartedPage() {
     businessType: "Select type...",
     country: "Select country...",
     whatsappNumber: "",
+    whatsappToken: "",
+    phoneNumberId: "",
+    businessAccountId: "",
     products: [{ name: "", price: "" }],
     businessDescription: "",
     replyTone: "Professional",
   });
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMetaLoading, setIsMetaLoading] = useState(true);
+  const [isFbInitialized, setIsFbInitialized] = useState(false);
+
+  useEffect(() => {
+    // Prevent multiple initializations
+    if (window.FB) {
+      setIsMetaLoading(false);
+      setIsFbInitialized(true);
+      return;
+    }
+
+    // Load Meta SDK
+    const loadMetaSDK = () => {
+      window.fbAsyncInit = function() {
+        window.FB.init({
+          appId: process.env.NEXT_PUBLIC_META_APP_ID,
+          autoLogAppEvents: true,
+          xfbml: true,
+          version: 'v21.0'
+        });
+        setIsMetaLoading(false);
+        setIsFbInitialized(true);
+      };
+
+      (function(d, s, id) {
+        var js, fjs = d.getElementsByTagName(s)[0];
+        if (d.getElementById(id)) return;
+        js = d.createElement(s) as HTMLScriptElement; js.id = id;
+        js.src = "https://connect.facebook.net/en_US/sdk.js";
+        fjs.parentNode?.insertBefore(js, fjs);
+      }(document, 'script', 'facebook-jssdk'));
+    };
+
+    loadMetaSDK();
+  }, []);
+
+  const launchWhatsAppSignup = () => {
+    console.log("Attempting to launch WhatsApp Signup...");
+    
+    if (typeof window === 'undefined') return;
+
+    if (!window.FB) {
+      alert("Meta SDK (FB) is not found on the window object. Ensure you don't have an ad-blocker blocking Facebook scripts.");
+      return;
+    }
+
+    if (!isFbInitialized) {
+      alert("Meta SDK is still initializing. This usually takes 1-2 seconds after the page loads. Please try again in a moment.");
+      return;
+    }
+
+    // Check for HTTPS (Meta requirement)
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!isSecure) {
+      setTestResult({ 
+        success: false, 
+        message: "Meta requires an HTTPS connection. If you are testing locally, please use 'localhost' instead of an IP address, or set up an HTTPS tunnel (e.g., ngrok)." 
+      });
+      return;
+    }
+
+    try {
+      window.FB.login(
+        (response: any) => {
+          if (response.authResponse) {
+            handleMetaConnection(response.authResponse.accessToken);
+          } else {
+            setTestResult({ success: false, message: "Connection cancelled or not authorized." });
+          }
+        },
+        {
+          // We removed 'whatsapp_embedded_signup' because it is restricted to BSPs/Partners.
+          // Using standard scopes allows regular apps to connect to existing WhatsApp accounts.
+          scope: "whatsapp_business_management,whatsapp_business_messaging,public_profile",
+          return_scopes: true
+        }
+      );
+    } catch (err: any) {
+      console.error("FB.login error:", err);
+      setTestResult({ success: false, message: `Meta Error: ${err.message || "Failed to open login popup"}` });
+    }
+  };
+
+  const handleMetaConnection = async (accessToken: string) => {
+    setIsTesting(true);
+    try {
+      // Step 1: Exchange for long-lived token and get business details
+      const response = await fetch("/api/whatsapp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setFormData(prev => ({
+          ...prev,
+          whatsappToken: data.accessToken,
+          phoneNumberId: data.phoneNumberId,
+          businessAccountId: data.businessAccountId,
+          whatsappNumber: data.whatsappNumber || prev.whatsappNumber
+        }));
+        setTestResult({ success: true, message: "Successfully connected via Meta!" });
+      } else {
+        setTestResult({ success: false, message: data.error || "Failed to sync Meta account" });
+      }
+    } catch (error) {
+      setTestResult({ success: false, message: "Error connecting to server" });
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
@@ -57,6 +186,61 @@ export default function GetStartedPage() {
         ...prev,
         products: prev.products.filter((_, i) => i !== index),
       }));
+    }
+  };
+
+  const testConnection = async () => {
+    if (!formData.whatsappToken || !formData.phoneNumberId) {
+      setTestResult({ success: false, message: "Please enter Token and Phone Number ID" });
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResult(null);
+
+    try {
+      const response = await fetch("/api/whatsapp/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: formData.whatsappToken,
+          phoneNumberId: formData.phoneNumberId,
+        }),
+      });
+
+      const data = await response.json();
+      setTestResult({
+        success: response.ok,
+        message: response.ok ? "Connection successful!" : data.error || "Connection failed",
+      });
+    } catch (error) {
+      setTestResult({ success: false, message: "Failed to connect to server" });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const finishSetup = async () => {
+    setIsSubmitting(true);
+    try {
+      const { db, auth } = await import("@/lib/firebase");
+      const { collection, addDoc, serverTimestamp } = await import("firebase/firestore");
+      
+      const user = auth.currentUser;
+      const dataToSave = {
+        ...formData,
+        userId: user?.uid || "anonymous",
+        createdAt: serverTimestamp(),
+        status: "active"
+      };
+
+      await addDoc(collection(db, "businesses"), dataToSave);
+      alert("Setup complete! Your AI assistant is now ready.");
+    } catch (error) {
+      console.error("Error saving setup:", error);
+      alert("Failed to save setup. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -183,31 +367,133 @@ export default function GetStartedPage() {
 
               {currentStep === 2 && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <label className="text-label-md text-on-surface font-bold tracking-tight">WhatsApp Number</label>
-                      <input
-                        name="whatsappNumber"
-                        value={formData.whatsappNumber}
-                        onChange={handleInputChange}
-                        className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest transition-all outline-none"
-                        placeholder="+1 (555) 000-0000"
-                        type="tel"
-                      />
-                      <p className="text-body-sm text-secondary">Connect your WhatsApp Business number to start receiving orders.</p>
+                  <div className="space-y-10 py-4">
+                    <div className="text-center space-y-3">
+                      <h3 className="text-display-sm font-bold text-on-surface">Connect Your WhatsApp</h3>
+                      <p className="text-body-lg text-secondary max-w-[480px] mx-auto">
+                        Connect your WhatsApp Business account to automatically reply to customers and generate sales.
+                      </p>
                     </div>
-                    <div className="p-8 border-2 border-dashed border-outline-variant rounded-2xl flex flex-col items-center justify-center gap-5 bg-surface-container-lowest/50 hover:bg-surface-container-lowest hover:border-primary/50 transition-all group cursor-pointer">
-                      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
-                        <span className="material-symbols-outlined text-primary text-3xl">qr_code_2</span>
+
+                    <div className="flex flex-col items-center gap-6">
+                      <div className="w-24 h-24 rounded-[2rem] bg-primary/10 flex items-center justify-center relative shadow-inner">
+                        <div className="absolute inset-0 bg-primary/5 rounded-[2rem] animate-ping opacity-20"></div>
+                        <svg className="w-12 h-12 fill-primary relative z-10" viewBox="0 0 24 24">
+                          <path d="M12.075 0C5.405 0 0 5.405 0 12.075c0 2.13.555 4.125 1.515 5.865L.03 23.505l5.745-1.515a11.96 11.96 0 006.3 1.785c6.67 0 12.075-5.405 12.075-12.075C24.15 5.405 18.745 0 12.075 0zm0 22.065a9.92 9.92 0 01-5.07-1.38l-.36-.21-3.765.99.99-3.66-.24-.375a9.92 9.92 0 01-1.53-5.355c0-5.505 4.47-9.975 9.975-9.975 5.505 0 9.975 4.47 9.975 9.975s-4.47 9.975-9.975 9.975z"/>
+                        </svg>
                       </div>
-                      <div className="text-center">
-                        <p className="text-label-lg font-bold text-on-surface">Link your account</p>
-                        <p className="text-body-sm text-secondary max-w-[280px] mx-auto mt-1">Open WhatsApp settings on your phone and scan the code to link</p>
+                      
+                      <div className="flex flex-col items-center gap-4 w-full">
+                        <button 
+                          onClick={launchWhatsAppSignup}
+                          disabled={isMetaLoading || !isFbInitialized || isTesting}
+                          className="w-full max-w-sm bg-primary text-white px-10 py-5 rounded-2xl text-title-md font-bold shadow-2xl shadow-primary/30 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                        >
+                          {isTesting ? (
+                            <>
+                              <span className="animate-spin h-6 w-6 border-3 border-white border-t-transparent rounded-full"></span>
+                              Connecting...
+                            </>
+                          ) : (
+                            <>
+                              👉 Connect WhatsApp
+                            </>
+                          )}
+                        </button>
+                        <p className="text-label-md text-secondary flex items-center gap-2">
+                          <svg className="w-4 h-4 fill-secondary" viewBox="0 0 24 24">
+                            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                          </svg>
+                          Secure connection via Facebook
+                        </p>
                       </div>
-                      <button className="bg-primary text-white px-8 py-3 rounded-xl text-label-md font-bold shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all mt-2">
-                        Connect WhatsApp
+
+                      <button 
+                        onClick={nextStep}
+                        className="text-label-md font-bold text-outline hover:text-on-surface transition-colors mt-2"
+                      >
+                        Skip for now
+                      </button>
+
+                      <button 
+                        onClick={() => setTestResult({ success: false, message: "MANUAL_SETUP" })}
+                        className="text-[10px] text-outline hover:underline mt-4"
+                      >
+                        Trouble connecting? Use manual setup instead
                       </button>
                     </div>
+
+                    {testResult?.message === "MANUAL_SETUP" && (
+                      <div className="space-y-4 p-6 bg-surface-container-low rounded-2xl border border-outline-variant animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-label-md font-bold text-on-surface">Manual API Setup</p>
+                          <button onClick={() => setTestResult(null)} className="text-outline hover:text-on-surface">
+                            <span className="material-symbols-outlined text-sm">close</span>
+                          </button>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-secondary uppercase">Phone Number ID</label>
+                            <input
+                              name="phoneNumberId"
+                              value={formData.phoneNumberId}
+                              onChange={handleInputChange}
+                              className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
+                              placeholder="e.g. 1029384756"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-secondary uppercase">Permanent Access Token</label>
+                            <input
+                              name="whatsappToken"
+                              value={formData.whatsappToken}
+                              onChange={handleInputChange}
+                              className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
+                              placeholder="EAAB..."
+                              type="password"
+                            />
+                          </div>
+                          <button 
+                            onClick={() => setTestResult({ success: true, message: "Manual credentials saved locally." })}
+                            className="w-full bg-on-surface text-surface px-4 py-2 rounded-lg text-label-sm font-bold"
+                          >
+                            Save Manual Credentials
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-8 border-t border-outline-variant">
+                      <div className="flex items-start gap-3 p-4 bg-surface-container-low rounded-xl border border-outline-variant">
+                        <span className="text-xl">🔒</span>
+                        <p className="text-body-sm text-secondary leading-relaxed">
+                          We only access messages sent to your business. Your personal chats remain private.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Result Messages */}
+                    {testResult && (
+                      <div className={`p-6 rounded-2xl border-2 transition-all animate-in fade-in zoom-in-95 duration-300 ${
+                        testResult.success ? "border-success/30 bg-success/5" : "border-error/30 bg-error/5"
+                      }`}>
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                            testResult.success ? "bg-success/10 text-success" : "bg-error/10 text-error"
+                          }`}>
+                            <span className="material-symbols-outlined text-2xl">
+                              {testResult.success ? "verified" : "error"}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="text-label-lg font-bold text-on-surface">
+                              {testResult.success ? "Successfully Linked!" : "Connection Error"}
+                            </p>
+                            <p className="text-body-sm text-secondary">{testResult.message}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -331,13 +617,23 @@ export default function GetStartedPage() {
                   Save Draft
                 </button>
                 <button
-                  onClick={currentStep === 4 ? () => alert("Setup Finished!") : nextStep}
-                  className="w-full sm:w-auto bg-primary text-white px-10 py-4 rounded-xl font-bold shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  onClick={currentStep === 4 ? finishSetup : nextStep}
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto bg-primary text-white px-10 py-4 rounded-xl font-bold shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {currentStep === 4 ? "Finish Setup" : "Next Step"}
-                  <span className="material-symbols-outlined text-lg">
-                    {currentStep === 4 ? "check_circle" : "arrow_forward"}
-                  </span>
+                  {isSubmitting ? (
+                    <>
+                      <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      {currentStep === 4 ? "Finish Setup" : "Next Step"}
+                      <span className="material-symbols-outlined text-lg">
+                        {currentStep === 4 ? "check_circle" : "arrow_forward"}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
