@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BUSINESS_TYPES } from "@/lib/business-type";
 
 export default function LandingPage() {
   return (
@@ -30,6 +31,26 @@ export default function LandingPage() {
                   View Demo
                 </button>
               </Link>
+            </div>
+            <div className="rounded-2xl border border-outline-variant/60 bg-surface-container-lowest/80 p-5 max-w-lg space-y-3">
+              <p className="text-label-md font-bold text-on-surface">
+                Start by choosing your business type
+              </p>
+              <p className="text-body-sm text-secondary">
+                Your catalog and AI behavior adapt—physical stock for shops, appointment slots
+                for salons, lead qualification for sales teams, and more.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {BUSINESS_TYPES.map((t) => (
+                  <Link
+                    key={t}
+                    href={`/get-started?type=${encodeURIComponent(t)}`}
+                    className="inline-flex items-center rounded-full border border-outline-variant bg-white px-4 py-2 text-label-sm font-semibold text-on-surface hover:border-primary hover:text-primary transition-colors"
+                  >
+                    {t}
+                  </Link>
+                ))}
+              </div>
             </div>
             <div className="flex items-center gap-4 pt-4 text-label-md text-secondary">
               <div className="flex -space-x-2">

@@ -1,8 +1,37 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
+import { matchWebhookVerifyToken } from "@/lib/webhook-verify-match";
+import { processWhatsAppWebhookBody } from "@/lib/whatsapp-webhook-handler";
 
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "whatsapp_ai_assistant_verify_token";
+export const dynamic = "force-dynamic";
+
+const RAW_BODY_LOG_MAX = 48_000;
+
+function logIncomingWebhookRequest(request: Request, rawBody: string): void {
+  const headers: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  const bodyForLog =
+    rawBody.length <= RAW_BODY_LOG_MAX
+      ? rawBody
+      : `${rawBody.slice(0, RAW_BODY_LOG_MAX)}… [${rawBody.length - RAW_BODY_LOG_MAX} more chars]`;
+
+  console.log(
+    "[whatsapp-webhook] incoming",
+    JSON.stringify(
+      {
+        timestamp: new Date().toISOString(),
+        method: request.method,
+        url: request.url,
+        headers,
+        body: bodyForLog,
+      },
+      null,
+      2
+    )
+  );
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -10,54 +39,42 @@ export async function GET(request: Request) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("WEBHOOK_VERIFIED");
-    return new Response(challenge, { status: 200 });
-  } else {
-    return new Response("Forbidden", { status: 403 });
+  if (mode === "subscribe" && token?.trim() && challenge) {
+    const { business, source } = await matchWebhookVerifyToken(token);
+    if (source !== "no_match" && source !== "empty") {
+      console.log(
+        "WEBHOOK_VERIFIED",
+        source,
+        business
+          ? `business #${business.id} ${business.whatsappNumber ?? business.phoneNumberId}`
+          : "(legacy/env token — no business row)"
+      );
+      return new Response(challenge, { status: 200 });
+    }
+    console.warn(
+      "[whatsapp-webhook] verify failed: hub.verify_token does not match any business in DB or WHATSAPP_VERIFY_TOKEN in .env"
+    );
   }
+  return new Response("Forbidden", { status: 403 });
 }
 
 export async function POST(request: Request) {
+  const rawBody = await request.text();
+  logIncomingWebhookRequest(request, rawBody);
+
+  let body: { object?: string; entry?: unknown[] };
   try {
-    const body = await request.json();
-
-    // Check if it's a WhatsApp business account notification
-    if (body.object === "whatsapp_business_account") {
-      if (
-        body.entry &&
-        body.entry[0].changes &&
-        body.entry[0].changes[0].value.messages &&
-        body.entry[0].changes[0].value.messages[0]
-      ) {
-        const message = body.entry[0].changes[0].value.messages[0];
-        const businessPhoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
-        const from = message.from; // extract the phone number from the webhook payload
-        const msgBody = message.text?.body; // extract the message text
-
-        console.log(`Received message from ${from}: ${msgBody}`);
-
-        // Save incoming message to Firestore
-        await addDoc(collection(db, "messages"), {
-          businessPhoneNumberId,
-          from,
-          text: msgBody,
-          type: "incoming",
-          status: "unread",
-          timestamp: serverTimestamp()
-        });
-
-        // TODO: Logic to process message with AI and reply back
-        // 1. Fetch business config from Firestore using businessPhoneNumberId
-        // 2. Send msgBody to LLM (Gemini/OpenAI) with business context
-        // 3. Send reply using Meta Graph API
-      }
-      return NextResponse.json({ status: "ok" });
-    } else {
-      return NextResponse.json({ status: "not a whatsapp notification" }, { status: 404 });
-    }
+    body = rawBody ? (JSON.parse(rawBody) as typeof body) : {};
   } catch (error) {
-    console.error("Webhook Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[whatsapp-webhook] invalid JSON body:", error);
+    return new NextResponse(null, { status: 200 });
   }
+
+  void processWhatsAppWebhookBody(
+    body as Parameters<typeof processWhatsAppWebhookBody>[0]
+  ).catch((error) => {
+    console.error("[whatsapp-webhook] async processing error:", error);
+  });
+
+  return new NextResponse(null, { status: 200 });
 }

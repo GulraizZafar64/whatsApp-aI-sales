@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { metaFbLoginOptions } from "@/lib/meta-fb-login-options";
 
 declare global {
   interface Window {
@@ -30,7 +31,7 @@ export default function SignInPage() {
         appId: process.env.NEXT_PUBLIC_META_APP_ID,
         autoLogAppEvents: true,
         xfbml: true,
-        version: 'v21.0'
+        version: 'v25.0'
       });
       setIsMetaLoading(false);
       setIsFbInitialized(true);
@@ -66,10 +67,7 @@ export default function SignInPage() {
             toast.error("Login cancelled or not authorized.");
           }
         },
-        {
-          scope: "whatsapp_business_management,whatsapp_business_messaging,public_profile",
-          return_scopes: true
-        }
+        metaFbLoginOptions()
       );
     } catch (err: any) {
       setIsLoggingIn(false);
@@ -79,20 +77,60 @@ export default function SignInPage() {
 
   const verifyConnection = async (accessToken: string) => {
     try {
-      const response = await fetch("/api/whatsapp/connect", {
+      const response = await fetch("/api/auth/facebook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken }),
       });
 
-      if (response.ok) {
-        localStorage.setItem("whatsappToken", accessToken);
+      const data = await response.json();
+
+      if (response.ok && data.success !== false) {
+        localStorage.setItem("whatsappToken", data.accessToken ?? accessToken);
+        if (data.phoneNumberId) {
+          localStorage.setItem("whatsappPhoneNumberId", data.phoneNumberId);
+        }
+        if (data.webhookVerifyToken) {
+          localStorage.setItem("webhookVerifyToken", data.webhookVerifyToken);
+          console.log(
+            "[sign-in] Meta webhook Verify token (paste in Developer Console):",
+            data.webhookVerifyToken
+          );
+        }
         window.dispatchEvent(new Event("authChange"));
-        toast.success("Successfully logged in!");
+        if (data.wabaSubscribed === false) {
+          const detail = [data.wabaSubscribeError, data.wabaSubscribeHint]
+            .filter(Boolean)
+            .join(" — ");
+          toast.error(
+            detail ||
+              "Account saved but WhatsApp webhook subscription failed. Sign in again.",
+            { duration: 14000 }
+          );
+          console.error("[sign-in] WABA subscribe failed:", data.wabaSubscriptions);
+        } else {
+          toast.success(
+            data.wabaSubscribed
+              ? "Connected — live message webhooks are subscribed."
+              : "Successfully logged in!",
+            { duration: 5000 }
+          );
+        }
+        if (data.webhookVerifyToken) {
+          console.log(
+            "[sign-in] Meta webhook Verify token:",
+            data.webhookVerifyToken
+          );
+        }
         router.push("/dashboard");
       } else {
-        const data = await response.json();
-        toast.error(data.error || "Failed to verify Meta account");
+        const msg =
+          data.message ??
+          (data.error === "whatsapp_messaging_not_linked"
+            ? "Please reconnect and select your WhatsApp number when prompted."
+            : data.error) ??
+          "Failed to verify Meta account";
+        toast.error(msg, { duration: 14000 });
         setIsLoggingIn(false);
       }
     } catch (error) {
@@ -230,10 +268,20 @@ export default function SignInPage() {
               </Link>
             </p>
           </div>
-          {/* Footer Security Note */}
-          <div className="mt-12 flex items-center justify-center gap-2 text-gray-400">
+          <p className="mt-8 text-center text-label-sm text-on-secondary-container max-w-sm mx-auto">
+            By continuing, you agree to our{" "}
+            <Link href="/terms" className="text-primary font-semibold hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="text-primary font-semibold hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2 text-gray-400">
             <span className="material-symbols-outlined text-[18px]">lock</span>
-            <p className="text-label-sm">Secure login powered by encrypted authentication</p>
+            <p className="text-label-sm">Secure login via Meta WhatsApp Business</p>
           </div>
         </div>
       </section>

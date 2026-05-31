@@ -4,8 +4,15 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { db, auth } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
+import { BusinessTypeSelect } from "@/components/business/BusinessTypeSelect";
+import { CountrySelect } from "@/components/business/CountrySelect";
+import {
+  TYPE_PLACEHOLDER,
+  isUnsetBusinessType,
+  parseBusinessTypeQuery,
+} from "@/lib/business-type";
+import { getCountryPlaceholder, isUnsetCountrySelection } from "@/lib/countries";
+import { metaFbLoginOptions } from "@/lib/meta-fb-login-options";
 
 declare global {
   interface Window {
@@ -13,11 +20,6 @@ declare global {
     FB: any;
   }
 }
-
-type Product = {
-  name: string;
-  price: string;
-};
 
 type FormData = {
   businessName: string;
@@ -27,9 +29,6 @@ type FormData = {
   whatsappToken: string;
   phoneNumberId: string;
   businessAccountId: string;
-  products: Product[];
-  businessDescription: string;
-  replyTone: string;
 };
 
 export default function GetStartedPage() {
@@ -37,21 +36,27 @@ export default function GetStartedPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
     businessName: "",
-    businessType: "Select type...",
-    country: "Select country...",
+    businessType: TYPE_PLACEHOLDER,
+    country: getCountryPlaceholder(),
     whatsappNumber: "",
     whatsappToken: "",
     phoneNumberId: "",
     businessAccountId: "",
-    products: [{ name: "", price: "" }],
-    businessDescription: "",
-    replyTone: "Professional",
   });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMetaLoading, setIsMetaLoading] = useState(true);
   const [isFbInitialized, setIsFbInitialized] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const preset = parseBusinessTypeQuery(params.get("type"));
+    if (preset) {
+      setFormData((prev) => ({ ...prev, businessType: preset }));
+    }
+  }, []);
 
   useEffect(() => {
     // Prevent multiple initializations
@@ -68,7 +73,7 @@ export default function GetStartedPage() {
           appId: process.env.NEXT_PUBLIC_META_APP_ID,
           autoLogAppEvents: true,
           xfbml: true,
-          version: 'v21.0'
+          version: 'v25.0'
         });
         setIsMetaLoading(false);
         setIsFbInitialized(true);
@@ -121,12 +126,7 @@ export default function GetStartedPage() {
             setTestResult({ success: false, message: "Connection cancelled or not authorized." });
           }
         },
-        {
-          // We removed 'whatsapp_embedded_signup' because it is restricted to BSPs/Partners.
-          // Using standard scopes allows regular apps to connect to existing WhatsApp accounts.
-          scope: "whatsapp_business_management,whatsapp_business_messaging,public_profile",
-          return_scopes: true
-        }
+        metaFbLoginOptions()
       );
     } catch (err: any) {
       console.error("FB.login error:", err);
@@ -138,20 +138,36 @@ export default function GetStartedPage() {
     setIsTesting(true);
     try {
       // Step 1: Exchange for long-lived token and get business details
-      const response = await fetch("/api/whatsapp/connect", {
+      const response = await fetch("/api/auth/facebook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken }),
       });
 
       const data = await response.json();
-      if (response.ok) {
-        // Check if this account is already registered
-        const q = query(collection(db, "businesses"), where("phoneNumberId", "==", data.phoneNumberId));
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
-          localStorage.setItem("whatsappToken", data.accessToken);
+      if (response.ok && data.success !== false) {
+        const existsRes = await fetch(
+          `/api/businesses/exists?phoneNumberId=${encodeURIComponent(data.phoneNumberId)}`
+        );
+        const existsJson = existsRes.ok
+          ? await existsRes.json()
+          : { exists: false, profileComplete: false };
+
+        localStorage.setItem("whatsappToken", data.accessToken);
+        if (data.phoneNumberId) {
+          localStorage.setItem("whatsappPhoneNumberId", data.phoneNumberId);
+        }
+
+        if (isStep1Valid()) {
+          await saveBusinessProfileToDb({
+            phoneNumberId: data.phoneNumberId,
+            whatsappToken: data.accessToken,
+            businessAccountId: data.businessAccountId,
+            whatsappNumber: data.whatsappNumber,
+          });
+        }
+
+        if (existsJson.exists && existsJson.profileComplete) {
           window.dispatchEvent(new Event("authChange"));
           toast.success("Welcome back! Your account is already set up.");
           router.push("/dashboard");
@@ -163,16 +179,30 @@ export default function GetStartedPage() {
           whatsappToken: data.accessToken,
           phoneNumberId: data.phoneNumberId,
           businessAccountId: data.businessAccountId,
-          whatsappNumber: prev.whatsappNumber || data.whatsappNumber
+          whatsappNumber: data.whatsappNumber ?? "",
         }));
-        setTestResult({ success: true, message: "Successfully connected via Meta!" });
+        setTestResult({
+          success: true,
+          message:
+            data.wabaSubscribed === false
+              ? "Connected, but webhook subscription failed — try Connect again."
+              : "Connected via Meta — webhooks subscribed for your WhatsApp account.",
+        });
         
         // Auto-advance to the next step after a short delay
         setTimeout(() => {
-          setCurrentStep((prev) => Math.min(prev + 1, 4));
+          setCurrentStep((prev) => Math.min(prev + 1, 2));
         }, 1500);
       } else {
-        setTestResult({ success: false, message: data.error || "Failed to sync Meta account" });
+        setTestResult({
+          success: false,
+          message:
+            data.message ??
+            (data.error === "whatsapp_messaging_not_linked"
+              ? "Please reconnect and select your WhatsApp number when Meta prompts you."
+              : data.error) ??
+            "Failed to sync Meta account",
+        });
       }
     } catch (error) {
       setTestResult({ success: false, message: "Error connecting to server" });
@@ -181,7 +211,54 @@ export default function GetStartedPage() {
     }
   };
 
-  const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
+  const isStep1Valid = () =>
+    Boolean(formData.businessName.trim()) &&
+    !isUnsetBusinessType(formData.businessType) &&
+    !isUnsetCountrySelection(formData.country);
+
+  const saveBusinessProfileToDb = async (meta: {
+    phoneNumberId: string;
+    whatsappToken: string;
+    businessAccountId: string;
+    whatsappNumber?: string;
+  }) => {
+    if (!isStep1Valid()) return false;
+    const saveRes = await fetch("/api/businesses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        businessName: formData.businessName.trim(),
+        businessType: formData.businessType,
+        country: formData.country,
+        whatsappNumber: meta.whatsappNumber?.trim() || formData.whatsappNumber.trim() || null,
+        whatsappToken: meta.whatsappToken,
+        phoneNumberId: meta.phoneNumberId,
+        businessAccountId: meta.businessAccountId,
+        products: [],
+        businessDescription: null,
+        replyTone: null,
+        userId: "anonymous",
+        status: "active",
+      }),
+    });
+    if (!saveRes.ok) {
+      const err = await saveRes.json().catch(() => ({}));
+      throw new Error(
+        typeof err.error === "string"
+          ? err.error
+          : "Could not save your business profile."
+      );
+    }
+    return true;
+  };
+
+  const nextStep = () => {
+    if (currentStep === 1 && !isStep1Valid()) {
+      toast.error("Enter business name, type, and country to continue.");
+      return;
+    }
+    setCurrentStep((prev) => Math.min(prev + 1, 2));
+  };
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -189,31 +266,12 @@ export default function GetStartedPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleProductChange = (index: number, field: keyof Product, value: string) => {
-    const newProducts = [...formData.products];
-    newProducts[index][field] = value;
-    setFormData((prev) => ({ ...prev, products: newProducts }));
-  };
-
-  const addProduct = () => {
-    setFormData((prev) => ({
-      ...prev,
-      products: [...prev.products, { name: "", price: "" }],
-    }));
-  };
-
-  const removeProduct = (index: number) => {
-    if (formData.products.length > 1) {
-      setFormData((prev) => ({
-        ...prev,
-        products: prev.products.filter((_, i) => i !== index),
-      }));
-    }
-  };
-
   const testConnection = async () => {
-    if (!formData.whatsappToken || !formData.phoneNumberId) {
-      setTestResult({ success: false, message: "Please enter Token and Phone Number ID" });
+    if (!formData.phoneNumberId?.trim()) {
+      setTestResult({
+        success: false,
+        message: "Connect with Meta first so your number is saved in the database.",
+      });
       return;
     }
 
@@ -225,7 +283,6 @@ export default function GetStartedPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: formData.whatsappToken,
           phoneNumberId: formData.phoneNumberId,
         }),
       });
@@ -243,26 +300,28 @@ export default function GetStartedPage() {
   };
 
   const finishSetup = async () => {
+    if (!isStep1Valid()) {
+      toast.error("Enter business name, type, and country.");
+      setCurrentStep(1);
+      return;
+    }
+    if (!formData.phoneNumberId?.trim() || !formData.whatsappToken?.trim()) {
+      toast.error("Connect WhatsApp before finishing setup.");
+      setCurrentStep(2);
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const user = auth.currentUser;
-      const dataToSave = {
-        ...formData,
-        userId: user?.uid || "anonymous",
-        createdAt: serverTimestamp(),
-        status: "active"
-      };
-
-      // Add a timeout to prevent hanging if Firestore cannot connect
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Firestore connection timed out. Please check your database settings.")), 10000)
-      );
-
-      await Promise.race([
-        addDoc(collection(db, "businesses"), dataToSave),
-        timeoutPromise
-      ]);
+      await saveBusinessProfileToDb({
+        phoneNumberId: formData.phoneNumberId,
+        whatsappToken: formData.whatsappToken,
+        businessAccountId: formData.businessAccountId,
+        whatsappNumber: formData.whatsappNumber,
+      });
       localStorage.setItem("whatsappToken", formData.whatsappToken);
+      if (formData.phoneNumberId) {
+        localStorage.setItem("whatsappPhoneNumberId", formData.phoneNumberId);
+      }
       window.dispatchEvent(new Event("authChange"));
       toast.success("Setup complete! Your AI assistant is now ready.");
       router.push("/dashboard");
@@ -290,8 +349,6 @@ export default function GetStartedPage() {
               {[
                 { id: 1, label: "Business", icon: "domain" },
                 { id: 2, label: "WhatsApp", icon: "chat" },
-                { id: 3, label: "Products", icon: "inventory_2" },
-                { id: 4, label: "AI Config", icon: "smart_toy" },
               ].map((step, idx, arr) => (
                 <div key={step.id} className="flex flex-1 items-center last:flex-none">
                   <div className="flex flex-col items-center relative z-10">
@@ -334,7 +391,7 @@ export default function GetStartedPage() {
           </div>
 
           {/* Form Card */}
-          <div className="bg-white rounded-2xl border border-outline-variant shadow-xl shadow-primary/5 overflow-hidden flex flex-col min-h-[480px]">
+          <div className="bg-white rounded-2xl border border-outline-variant shadow-xl shadow-primary/5 flex flex-col min-h-[480px] overflow-visible">
             {/* Top Accent Line */}
             <div className="h-1.5 w-full bg-gradient-to-r from-primary/50 via-primary to-primary/50"></div>
             
@@ -353,55 +410,46 @@ export default function GetStartedPage() {
                         type="text"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-label-md text-on-surface font-bold tracking-tight">WhatsApp Business Number</label>
-                      <input
-                        name="whatsappNumber"
-                        value={formData.whatsappNumber}
-                        onChange={handleInputChange}
-                        className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest transition-all outline-none"
-                        placeholder="e.g. +1 234 567 8900"
-                        type="text"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <p className="text-body-sm text-secondary">
+                      Your WhatsApp number is linked automatically when you connect
+                      in the next step—we never ask you to type it here.
+                    </p>
+                    <div className="space-y-6">
                       <div className="space-y-2">
-                        <label className="text-label-md text-on-surface font-bold tracking-tight">Business Type</label>
-                        <div className="relative">
-                          <select
-                            name="businessType"
-                            value={formData.businessType}
-                            onChange={handleInputChange}
-                            className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest appearance-none transition-all outline-none cursor-pointer"
-                          >
-                            <option disabled>Select type...</option>
-                            <option>Retail</option>
-                            <option>Services</option>
-                            <option>E-commerce</option>
-                            <option>Consulting</option>
-                          </select>
-                          <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline">expand_more</span>
-                        </div>
+                        <label className="text-label-md text-on-surface font-bold tracking-tight">
+                          Business type
+                        </label>
+                        <BusinessTypeSelect
+                          value={formData.businessType}
+                          onChange={(v) =>
+                            setFormData((prev) => ({ ...prev, businessType: v }))
+                          }
+                          className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest transition-all outline-none cursor-pointer"
+                          required
+                        />
                       </div>
                       <div className="space-y-2">
                         <label className="text-label-md text-on-surface font-bold tracking-tight">Country</label>
-                        <div className="relative">
-                          <select
-                            name="country"
-                            value={formData.country}
-                            onChange={handleInputChange}
-                            className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest appearance-none transition-all outline-none cursor-pointer"
-                          >
-                            <option disabled>Select country...</option>
-                            <option>United States</option>
-                            <option>United Kingdom</option>
-                            <option>Brazil</option>
-                            <option>India</option>
-                          </select>
-                          <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-outline">expand_more</span>
-                        </div>
+                        <CountrySelect
+                          value={formData.country}
+                          onChange={(v) =>
+                            setFormData((prev) => ({ ...prev, country: v }))
+                          }
+                          triggerClassName="w-full flex items-center gap-2 border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-3.5 text-body-md bg-surface-container-lowest text-left outline-none"
+                        />
                       </div>
                     </div>
+                    <p className="text-body-sm text-secondary">
+                      By continuing, you agree to our{" "}
+                      <Link href="/terms" className="text-primary font-semibold hover:underline">
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link href="/privacy" className="text-primary font-semibold hover:underline">
+                        Privacy Policy
+                      </Link>
+                      .
+                    </p>
                   </div>
                 </div>
               )}
@@ -459,10 +507,12 @@ export default function GetStartedPage() {
                       {!(formData.whatsappToken && testResult?.success) && (
                         <>
                           <button 
-                            onClick={nextStep}
+                            onClick={() =>
+                              setTestResult({ success: false, message: "MANUAL_SETUP" })
+                            }
                             className="text-label-md font-bold text-outline hover:text-on-surface transition-colors mt-2"
                           >
-                            Skip for now
+                            Skip for now — use manual setup
                           </button>
 
                           <button 
@@ -492,16 +542,6 @@ export default function GetStartedPage() {
                               onChange={handleInputChange}
                               className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
                               placeholder="e.g. 1029384756"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-secondary uppercase">WhatsApp Number</label>
-                            <input
-                              name="whatsappNumber"
-                              value={formData.whatsappNumber}
-                              onChange={handleInputChange}
-                              className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm outline-none focus:border-primary"
-                              placeholder="e.g. +1 234 567 8900"
                             />
                           </div>
                           <div className="space-y-1.5">
@@ -560,107 +600,6 @@ export default function GetStartedPage() {
                 </div>
               )}
 
-              {currentStep === 3 && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-title-md text-on-surface font-bold">Products & Services</h3>
-                      <p className="text-body-sm text-secondary">Add items to help the AI handle inquiries</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        className="whitespace-nowrap text-secondary text-label-sm font-bold flex items-center gap-2 hover:text-on-surface transition-colors bg-surface-container-low px-4 py-2.5 rounded-xl border border-outline-variant"
-                      >
-                        <span className="material-symbols-outlined text-base">upload</span>
-                        Bulk Import
-                      </button>
-                      <button
-                        onClick={addProduct}
-                        className="whitespace-nowrap bg-primary-container text-on-primary-container text-label-sm font-bold flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary/20 hover:bg-primary hover:text-white transition-all shadow-sm"
-                      >
-                        <span className="material-symbols-outlined text-base">add</span>
-                        Add Product
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4 max-h-[340px] overflow-y-auto pr-3 custom-scrollbar">
-                    {formData.products.map((product, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-4 items-center bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant hover:border-primary/30 hover:shadow-md transition-all relative group">
-                        <div className="col-span-12 sm:col-span-7 space-y-1.5">
-                          <label className="text-[10px] text-secondary font-bold uppercase tracking-widest ml-1">Product Name</label>
-                          <input
-                            value={product.name}
-                            onChange={(e) => handleProductChange(index, "name", e.target.value)}
-                            className="w-full border-none focus:ring-0 px-1 py-0.5 text-body-md bg-transparent placeholder:text-outline/40 font-medium"
-                            placeholder="e.g. Espresso Beans"
-                            type="text"
-                          />
-                        </div>
-                        <div className="col-span-9 sm:col-span-4 space-y-1.5">
-                          <label className="text-[10px] text-secondary font-bold uppercase tracking-widest ml-1">Price ($)</label>
-                          <input
-                            value={product.price}
-                            onChange={(e) => handleProductChange(index, "price", e.target.value)}
-                            className="w-full border-none focus:ring-0 px-1 py-0.5 text-body-md bg-transparent placeholder:text-outline/40 font-medium"
-                            placeholder="0.00"
-                            type="text"
-                          />
-                        </div>
-                        <div className="col-span-3 sm:col-span-1 flex justify-center pt-5">
-                          <button
-                            onClick={() => removeProduct(index)}
-                            className="p-2 text-outline hover:text-error hover:bg-error/10 rounded-xl transition-all"
-                            disabled={formData.products.length === 1}
-                          >
-                            <span className="material-symbols-outlined text-xl">delete</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    {formData.products.length === 0 && (
-                      <div className="text-center py-12 border-2 border-dashed border-outline-variant rounded-2xl">
-                        <p className="text-body-md text-secondary">No products added yet</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {currentStep === 4 && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <label className="text-label-md text-on-surface font-bold tracking-tight">Business Description</label>
-                      <textarea
-                        name="businessDescription"
-                        value={formData.businessDescription}
-                        onChange={handleInputChange}
-                        className="w-full border-outline-variant rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary px-4 py-4 text-body-md bg-surface-container-lowest transition-all min-h-[160px] resize-none outline-none"
-                        placeholder="Tell us about your business, what you sell, and your brand voice. This helps the AI understand your business..."
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <label className="text-label-md text-on-surface font-bold tracking-tight">Tone of Replies</label>
-                      <div className="grid grid-cols-3 gap-4">
-                        {["Friendly", "Professional", "Casual"].map((tone) => (
-                          <button
-                            key={tone}
-                            onClick={() => setFormData((prev) => ({ ...prev, replyTone: tone }))}
-                            className={`px-4 py-4 rounded-xl border-2 text-label-md font-bold transition-all ${
-                              formData.replyTone === tone
-                                ? "bg-primary-container border-primary text-on-primary-container shadow-inner scale-[1.02]"
-                                : "bg-surface-container-lowest border-outline-variant text-secondary hover:border-outline hover:scale-[1.01]"
-                            }`}
-                          >
-                            {tone}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Footer */}
@@ -679,7 +618,7 @@ export default function GetStartedPage() {
                   Save Draft
                 </button>
                 <button
-                  onClick={currentStep === 4 ? finishSetup : nextStep}
+                  onClick={currentStep === 2 ? finishSetup : nextStep}
                   disabled={isSubmitting}
                   className="w-full sm:w-auto bg-primary text-white px-10 py-4 rounded-xl font-bold shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                 >
@@ -690,9 +629,9 @@ export default function GetStartedPage() {
                     </>
                   ) : (
                     <>
-                      {currentStep === 4 ? "Finish Setup" : "Next Step"}
+                      {currentStep === 2 ? "Finish Setup" : "Next Step"}
                       <span className="material-symbols-outlined text-lg">
-                        {currentStep === 4 ? "check_circle" : "arrow_forward"}
+                        {currentStep === 2 ? "check_circle" : "arrow_forward"}
                       </span>
                     </>
                   )}
@@ -733,7 +672,8 @@ export default function GetStartedPage() {
                 <div className="flex justify-start">
                   <div className="bg-white p-3 rounded-lg rounded-tl-none shadow-sm max-w-[80%] relative">
                     <p className="text-xs text-on-surface">
-                      Hi! I saw your {formData.products[0]?.name || "new coffee roast"} online. How much is this?
+                      Hi! I saw your latest offer from{" "}
+                      {formData.businessName?.trim() || "your shop"} online. How much is this?
                     </p>
                     <p className="text-[9px] text-on-surface-variant text-right mt-1">10:42 AM</p>
                   </div>
@@ -742,9 +682,7 @@ export default function GetStartedPage() {
                 <div className="flex justify-end">
                   <div className="bg-[#DCF8C6] p-3 rounded-lg rounded-tr-none shadow-sm max-w-[80%] relative">
                     <p className="text-xs text-on-surface">
-                      {formData.products[0]?.price 
-                        ? `It's $${formData.products[0].price} 👍 Would you like to order?` 
-                        : "Hi! It's $20 👍 Would you like to order? I can handle the payment right here."}
+                      Hi! It&apos;s $20 👍 Would you like to order? I can handle the payment right here.
                     </p>
                     <div className="flex items-center justify-end gap-1 mt-1">
                       <p className="text-[9px] text-on-surface-variant">10:42 AM</p>

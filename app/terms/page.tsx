@@ -1,12 +1,27 @@
+import type { Metadata } from "next";
+import { LegalPageShell } from "@/components/legal/LegalPageShell";
+import { termsSections } from "@/components/legal/terms-sections";
+import { APP_NAME } from "@/lib/legal-site";
+
+export const metadata: Metadata = {
+  title: `Terms of Service | ${APP_NAME}`,
+  description: `Terms governing use of ${APP_NAME} — WhatsApp AI sales, Meta integration, catalog, orders, and automated messaging.`,
+};
+
 export default function TermsPage() {
   return (
-    <main className="pt-32 pb-16 px-6 max-w-4xl mx-auto">
-      <h1 className="text-display-lg mb-8">Terms of Service</h1>
-      <div className="prose dark:prose-invert">
-        <p>Last updated: May 2024</p>
-        <p>By using our service, you agree to these terms.</p>
-        {/* Placeholder content */}
-      </div>
-    </main>
+    <LegalPageShell
+      title="Terms of Service"
+      badge="Legal"
+      sibling={{ href: "/privacy", label: "Privacy Policy" }}
+      intro={
+        <p>
+          These terms apply to merchants and teams using {APP_NAME} to connect WhatsApp Business, manage a product
+          catalog, automate AI replies, record orders, and send optional follow-up messages. Please read them
+          carefully before connecting your account or enabling automation.
+        </p>
+      }
+      sections={termsSections}
+    />
   );
 }

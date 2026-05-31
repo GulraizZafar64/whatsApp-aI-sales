@@ -1,12 +1,27 @@
+import type { Metadata } from "next";
+import { LegalPageShell } from "@/components/legal/LegalPageShell";
+import { privacySections } from "@/components/legal/privacy-sections";
+import { APP_NAME } from "@/lib/legal-site";
+
+export const metadata: Metadata = {
+  title: `Privacy Policy | ${APP_NAME}`,
+  description: `How ${APP_NAME} collects and processes business, WhatsApp message, catalog, and AI data — Meta, Anthropic, and your rights.`,
+};
+
 export default function PrivacyPage() {
   return (
-    <main className="pt-32 pb-16 px-6 max-w-4xl mx-auto">
-      <h1 className="text-display-lg mb-8">Privacy Policy</h1>
-      <div className="prose dark:prose-invert">
-        <p>Last updated: May 2024</p>
-        <p>Your privacy is important to us. This policy explains how we handle your data.</p>
-        {/* Placeholder content */}
-      </div>
-    </main>
+    <LegalPageShell
+      title="Privacy Policy"
+      badge="Legal & data"
+      sibling={{ href: "/terms", label: "Terms of Service" }}
+      intro={
+        <p>
+          We built {APP_NAME} for businesses that sell on WhatsApp. This policy describes what we collect from you
+          and what we process on your behalf when your customers chat with your connected number—including inbox
+          storage, AI replies powered by Anthropic, and order automation.
+        </p>
+      }
+      sections={privacySections}
+    />
   );
 }

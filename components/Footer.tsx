@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="space-y-4">
           <div className="text-lg font-bold text-gray-800 dark:text-gray-200">WhatsApp AI Sales</div>
           <p className="font-['Inter'] text-xs text-gray-500 dark:text-gray-400 max-w-[300px]">
-            © 2024 WhatsApp AI Assistant. Built for high-velocity sales. Empowering modern enterprises with intelligent
+            © 2026 WhatsApp AI Sales. Built for high-velocity sales. Empowering modern enterprises with intelligent
             automation.
           </p>
         </div>

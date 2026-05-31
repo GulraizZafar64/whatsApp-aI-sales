@@ -32,6 +32,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     localStorage.removeItem("whatsappToken");
+    localStorage.removeItem("whatsappPhoneNumberId");
     window.dispatchEvent(new Event("authChange"));
     toast.success("Logged out successfully");
     router.push("/sign-in");
