@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dispatch Button</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0d1017;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            gap: 32px;
+        }
+
+        .label-top {
+            color: #444;
+            font-size: 11px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+
+        .dispatch-btn {
+            position: relative;
+            width: 260px;
+            height: 72px;
+            border-radius: 40px;
+            background: #181c27;
+            border: 1.5px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            overflow: hidden;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+            outline: none;
+            padding: 0;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .dispatch-btn:hover:not(.running):not(.done) {
+            border-color: rgba(255, 255, 255, 0.18);
+            background: #1e2235;
+        }
+
+        .btn-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #c8cfe8;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            transition: opacity 0.25s;
+            z-index: 10;
+            pointer-events: none;
+            gap: 8px;
+        }
+
+        .done-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #4ade80;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            opacity: 0;
+            z-index: 20;
+            pointer-events: none;
+            gap: 6px;
+        }
+
+        .dispatch-btn.running .btn-text {
+            opacity: 0;
+        }
+
+        .dispatch-btn.done .btn-text {
+            opacity: 0;
+        }
+
+        .dispatch-btn.done {
+            border-color: rgba(74, 222, 128, 0.35);
+            box-shadow: 0 8px 40px rgba(74, 222, 128, 0.15);
+        }
+
+        .reset-btn {
+            background: none;
+            border: 1px solid #2a2e3f;
+            color: #444;
+            font-size: 11px;
+            letter-spacing: 2px;
+            padding: 7px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            display: none;
+            text-transform: uppercase;
+            transition: color 0.2s, border-color 0.2s;
+        }
+
+        .reset-btn:hover {
+            color: #888;
+            border-color: #555;
+        }
+
+        .reset-btn.show {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="label-top">Click to dispatch</div>
+
+    <button class="dispatch-btn" id="btn">
+        <span class="btn-text">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <polygon points="2,2 14,8 2,14" fill="#6e8efb" />
+            </svg>
+            Dispatch
+        </span>
+        <canvas id="truckCanvas" style="position:absolute;inset:0;width:100%;height:100%;border-radius:40px;"></canvas>
+        <div class="done-text" id="doneText">✓ &nbsp;Dispatched</div>
+    </button>
+
+    <button class="reset-btn" id="resetBtn" onclick="doReset()">↺ &nbsp;Reset</button>
+
+    <script>
+        const btn = document.getElementById('btn');
+        const canvas = document.getElementById('truckCanvas');
+        const ctx = canvas.getContext('2d');
+        const doneText = document.getElementById('doneText');
+        const resetBtn = document.getElementById('resetBtn');
+
+        let W, H, animId, phase, phaseStart;
+
+        /*
+          TOP-DOWN (bird's eye) view — truck faces RIGHT
+          Cab = right side, trailer = left side, back door = LEFT edge of trailer
+        
+          PHASES:
+          0 → truck reverses in from RIGHT edge to center  (cab leads, so truck slides LEFT)
+          1 → door opens (two halves swing outward)
+          2 → package slides RIGHT into trailer from the left
+          3 → door closes
+          4 → truck drives forward (RIGHT) off screen
+          5 → "Dispatched" fades in
+        */
+
+        const PHASE_DUR = [700, 500, 600, 500, 650, 500];
+
+        function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+        function easeIn(t) { return t * t * t; }
+        function easeInOut(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+        function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
+
+        function resize() {
+            W = canvas.offsetWidth;
+            H = canvas.offsetHeight;
+            canvas.width = W * devicePixelRatio;
+            canvas.height = H * devicePixelRatio;
+            ctx.scale(devicePixelRatio, devicePixelRatio);
+        }
+
+        // Truck parts — cx is horizontal centre of entire truck+cab unit
+        function parts(cx, cy) {
+            const TW = 100, TH = 32, CW = 36, CH = 26;
+            const tx = cx - TW / 2 - CW / 2 + 2;
+            return {
+                tr: { x: tx, y: cy - TH / 2, w: TW, h: TH },
+                cab: { x: tx + TW + 2, y: cy - CH / 2, w: CW, h: CH },
+                backX: tx,
+                midY: cy,
+                halfH: TH / 2,
+            };
+        }
+
+        function roundRect(x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        function drawWheel(x, y, rw, rh) {
+            ctx.fillStyle = '#181818';
+            ctx.beginPath(); ctx.ellipse(x, y, rw, rh, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#4a4a4a';
+            ctx.beginPath(); ctx.ellipse(x, y, rw - 2, rh - 1.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#222';
+            ctx.beginPath(); ctx.ellipse(x, y, rw - 4, rh - 3, 0, 0, Math.PI * 2); ctx.fill();
+        }
+
+        function drawScene(truckCX, doorAng, pkgX, pkgAlpha, doneAlpha) {
+            ctx.clearRect(0, 0, W, H);
+
+            // bg
+            ctx.fillStyle = '#11141e'; ctx.fillRect(0, 0, W, H);
+
+            // road dashes
+            ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 1;
+            ctx.setLineDash([8, 10]);
+            ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+            ctx.setLineDash([]);
+
+            const cy = H / 2;
+            const p = parts(truckCX, cy);
+
+            // --- TRAILER shadow ---
+            ctx.fillStyle = 'rgba(0,0,0,0.22)';
+            roundRect(p.tr.x + 3, p.tr.y + 4, p.tr.w, p.tr.h, 4); ctx.fill();
+
+            // --- TRAILER body ---
+            ctx.fillStyle = '#cdd1e0';
+            roundRect(p.tr.x, p.tr.y, p.tr.w, p.tr.h, 4); ctx.fill();
+
+            // panel lines on top
+            ctx.strokeStyle = 'rgba(0,0,0,0.07)'; ctx.lineWidth = 1.5;
+            for (let i = 1; i <= 3; i++) {
+                const lx = p.tr.x + (p.tr.w / 4) * i;
+                ctx.beginPath(); ctx.moveTo(lx, p.tr.y + 3); ctx.lineTo(lx, p.tr.y + p.tr.h - 3); ctx.stroke();
+            }
+
+            // --- BACK DOORS (two halves, hinge at outer edge of back) ---
+            const dW = 7; // door panel width (depth in top-down view)
+            const ang = doorAng * Math.PI / 180;
+
+            // top half: hinge at (backX, midY - halfH), panel goes DOWN toward midY, swings UP/OUT
+            ctx.save();
+            ctx.translate(p.backX, p.midY - p.halfH);
+            ctx.rotate(-ang);
+            ctx.fillStyle = '#a8acbf';
+            ctx.fillRect(-dW, 0, dW, p.halfH);
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.fillRect(-dW + 1, 2, dW - 2, p.halfH / 2 - 2);
+            // handle dot
+            ctx.fillStyle = '#7a7e90';
+            ctx.beginPath(); ctx.arc(-dW / 2, p.halfH - 4, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            // bottom half: hinge at (backX, midY + halfH), panel goes UP toward midY, swings DOWN/OUT
+            ctx.save();
+            ctx.translate(p.backX, p.midY + p.halfH);
+            ctx.rotate(ang);
+            ctx.fillStyle = '#a8acbf';
+            ctx.fillRect(-dW, -p.halfH, dW, p.halfH);
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.fillRect(-dW + 1, -p.halfH + 2, dW - 2, p.halfH / 2 - 2);
+            ctx.fillStyle = '#7a7e90';
+            ctx.beginPath(); ctx.arc(-dW / 2, -p.halfH + 4, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            // --- PACKAGE ---
+            if (pkgAlpha > 0) {
+                ctx.globalAlpha = pkgAlpha;
+                const pw = 20, ph = 15;
+                ctx.fillStyle = 'rgba(0,0,0,0.25)';
+                roundRect(pkgX - pw / 2 + 2, cy - ph / 2 + 2, pw, ph, 2); ctx.fill();
+                ctx.fillStyle = '#c8821a';
+                roundRect(pkgX - pw / 2, cy - ph / 2, pw, ph, 2); ctx.fill();
+                // tape
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(pkgX - pw / 2, cy); ctx.lineTo(pkgX + pw / 2, cy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(pkgX, cy - ph / 2); ctx.lineTo(pkgX, cy + ph / 2); ctx.stroke();
+                // chip
+                ctx.fillStyle = '#e8b84a';
+                roundRect(pkgX - 4, cy - 3, 8, 6, 1); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            // --- CAB shadow ---
+            ctx.fillStyle = 'rgba(0,0,0,0.28)';
+            roundRect(p.cab.x + 3, p.cab.y + 4, p.cab.w, p.cab.h, 6); ctx.fill();
+
+            // --- CAB body ---
+            const cabGrad = ctx.createLinearGradient(p.cab.x, 0, p.cab.x + p.cab.w, 0);
+            cabGrad.addColorStop(0, '#1e4dd4');
+            cabGrad.addColorStop(1, '#3a6ef5');
+            ctx.fillStyle = cabGrad;
+            roundRect(p.cab.x, p.cab.y, p.cab.w, p.cab.h, 6); ctx.fill();
+
+            // windshield (right side of cab = front of truck)
+            ctx.fillStyle = 'rgba(160,210,255,0.75)';
+            roundRect(p.cab.x + p.cab.w - 13, p.cab.y + 4, 10, p.cab.h - 8, 3); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            ctx.fillRect(p.cab.x + p.cab.w - 12, p.cab.y + 5, 3, 7);
+
+            // headlights
+            ctx.fillStyle = '#ffee88';
+            ctx.beginPath(); ctx.ellipse(p.cab.x + p.cab.w - 1, p.cab.y + 5, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(p.cab.x + p.cab.w - 1, p.cab.y + p.cab.h - 5, 3, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+
+            // mirrors
+            ctx.fillStyle = '#1230a0';
+            ctx.fillRect(p.cab.x + 3, p.cab.y - 4, 7, 3);
+            ctx.fillRect(p.cab.x + 3, p.cab.y + p.cab.h + 1, 7, 3);
+
+            // --- WHEELS ---
+            drawWheel(p.tr.x + 16, p.tr.y - 2, 7, 4);
+            drawWheel(p.tr.x + 16, p.tr.y + p.tr.h + 2, 7, 4);
+            drawWheel(p.tr.x + p.tr.w - 18, p.tr.y - 2, 7, 4);
+            drawWheel(p.tr.x + p.tr.w - 18, p.tr.y + p.tr.h + 2, 7, 4);
+            drawWheel(p.cab.x + 6, p.cab.y - 2, 6, 3.5);
+            drawWheel(p.cab.x + 6, p.cab.y + p.cab.h + 2, 6, 3.5);
+
+            // --- REVERSE LIGHTS (glow on back when reversing) ---
+            if (phase === 0 && doneAlpha === 0) {
+                ctx.fillStyle = 'rgba(255,255,200,0.18)';
+                ctx.beginPath(); ctx.ellipse(p.backX - 4, cy, 10, p.halfH * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // --- DONE OVERLAY ---
+            if (doneAlpha > 0) {
+                ctx.fillStyle = `rgba(10,18,12,${doneAlpha})`;
+                ctx.fillRect(0, 0, W, H);
+                doneText.style.opacity = doneAlpha;
+            } else {
+                doneText.style.opacity = 0;
+            }
+        }
+
+        // ─── pkg positions ───
+        function pkgStart() { return -30; }
+        function pkgEnd() { return W / 2 - 34; } // inside trailer
+
+        // ─── truck start = off-screen right (reversed in) ───
+        function truckStartX() { return W + 160; }  // off right edge (cab points right, enters reversed = slides left)
+        function truckCenterX() { return W / 2; }
+
+        function animate(ts) {
+            if (!phaseStart) phaseStart = ts;
+            const elapsed = ts - phaseStart;
+            const dur = PHASE_DUR[phase] || 600;
+            const rawT = Math.min(elapsed / dur, 1);
+
+            let truckX = truckCenterX();
+            let doorAng = 0;
+            let pkgX = pkgStart();
+            let pkgAlpha = 0;
+            let doneA = 0;
+
+            if (phase === 0) {
+                // Truck reverses in from right → center (slides LEFT, easeOutBack for nice stop)
+                truckX = truckStartX() + (truckCenterX() - truckStartX()) * easeOutBack(rawT);
+                doorAng = 0;
+                pkgAlpha = 0;
+            }
+            else if (phase === 1) {
+                // Door opens
+                truckX = truckCenterX();
+                doorAng = easeOut(rawT) * 82;
+                pkgAlpha = 0;
+            }
+            else if (phase === 2) {
+                // Package slides into truck
+                truckX = truckCenterX();
+                doorAng = 82;
+                pkgX = pkgStart() + (pkgEnd() - pkgStart()) * easeOut(rawT);
+                pkgAlpha = 1;
+            }
+            else if (phase === 3) {
+                // Door closes
+                truckX = truckCenterX();
+                doorAng = 82 * (1 - easeInOut(rawT));
+                pkgAlpha = 0; // package inside now
+            }
+            else if (phase === 4) {
+                // Truck drives forward (RIGHT) off screen
+                truckX = truckCenterX() + easeIn(rawT) * (W + 200);
+                doorAng = 0;
+                pkgAlpha = 0;
+            }
+            else if (phase === 5) {
+                // Fade to done
+                truckX = truckCenterX() + W + 200;
+                doneA = easeOut(rawT);
+                if (rawT >= 1) { finish(); return; }
+            }
+
+            drawScene(truckX, doorAng, pkgX, pkgAlpha, doneA);
+
+            if (rawT >= 1 && phase < 5) {
+                phase++;
+                phaseStart = ts;
+            }
+
+            animId = requestAnimationFrame(animate);
+        }
+
+        function start() {
+            if (btn.classList.contains('running') || btn.classList.contains('done')) return;
+            resize();
+            btn.classList.add('running');
+            phase = 0;
+            phaseStart = null;
+            animId = requestAnimationFrame(animate);
+        }
+
+        function finish() {
+            cancelAnimationFrame(animId);
+            btn.classList.remove('running');
+            btn.classList.add('done');
+            doneText.style.opacity = 1;
+            resetBtn.classList.add('show');
+        }
+
+        function doReset() {
+            cancelAnimationFrame(animId);
+            btn.classList.remove('running', 'done');
+            doneText.style.opacity = 0;
+            resetBtn.classList.remove('show');
+            resize();
+            drawScene(truckStartX(), 0, pkgStart(), 0, 0);
+            // draw idle (truck parked centered off-screen so button looks clean)
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#11141e'; ctx.fillRect(0, 0, W, H);
+        }
+
+        btn.addEventListener('click', start);
+
+        window.addEventListener('resize', () => {
+            resize();
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#11141e'; ctx.fillRect(0, 0, W, H);
+        });
+
+        resize();
+        ctx.fillStyle = '#11141e'; ctx.fillRect(0, 0, W, H);
+    </script>
+</body>
+
+</html>

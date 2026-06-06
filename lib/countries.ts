@@ -54,3 +54,17 @@ export function isKnownCountryName(name: string): boolean {
 export function formatCountryLabel(c: CountryOption): string {
   return `${c.flag} ${c.name}`;
 }
+
+/** Default ISO 4217 currency for a selected country name (e.g. Pakistan → PKR). */
+export function getDefaultCurrencyForCountry(
+  countryName: string
+): string | null {
+  const n = countryName.trim();
+  if (!n || n === PLACEHOLDER) return null;
+
+  const match = countries.find((c) => c.name?.common === n);
+  if (!match?.currencies) return null;
+
+  const [code] = Object.keys(match.currencies);
+  return code?.trim().toUpperCase() ?? null;
+}

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useDashboard } from "@/components/dashboard/DashboardProvider";
+import { BallLoader } from "@/components/ui/BallLoader";
+import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
+import { formatMoney, currencySymbol, normalizeCurrency } from "@/lib/currency";
 import { createProductFormConfig } from "@/lib/product-form-config";
+import {
+  mergeProductDescription,
+  parseDescriptionParts,
+  tierAmountForField,
+} from "@/lib/product-description";
 import {
   isAllowedProductImageFile,
   normalizeProductImageDataUrl,
@@ -11,7 +20,6 @@ import {
   MAX_IMAGE_DECODED_BYTES,
   MAX_PRODUCT_IMAGES,
 } from "@/lib/product-payload";
-import { COMPLETED_ORDERS_CHANGED_EVENT } from "@/lib/dashboard-events";
 import { dashboardFetch } from "@/lib/dashboard/session";
 import { parseCommaList } from "@/lib/parse-list";
 
@@ -55,11 +63,19 @@ function effectivePrice(p: ProductRow): number {
 }
 
 export function OrdersPanel() {
+  const {
+    bootstrapped,
+    needsSetup,
+    businessType: profileBusinessType,
+    currency: profileCurrency,
+  } = useDashboard();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [businessType, setBusinessType] = useState<string | null>(null);
+  const [currency, setCurrency] = useState("PKR");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const [productName, setProductName] = useState("");
   const [productDescription, setProductDescription] = useState("");
@@ -77,14 +93,44 @@ export function OrdersPanel() {
   const [prepTime, setPrepTime] = useState("");
   const [allergens, setAllergens] = useState("");
   const [bargainingLowAmount, setBargainingLowAmount] = useState("");
+  const [tierAmounts, setTierAmounts] = useState<Record<string, string>>({});
   const [images, setImages] = useState<string[]>([]);
 
+  const effectiveBusinessType =
+    profileBusinessType?.trim() || businessType?.trim() || null;
+  const effectiveCurrency = normalizeCurrency(
+    profileCurrency || currency
+  );
+  const moneySym = currencySymbol(effectiveCurrency);
+
   const formCfg = useMemo(
-    () => createProductFormConfig(businessType),
-    [businessType]
+    () => createProductFormConfig(effectiveBusinessType),
+    [effectiveBusinessType]
   );
 
-  const resetForm = useCallback(() => {
+  const showVariantColumn =
+    formCfg.showSizes || formCfg.showColors || formCfg.showPortions;
+
+  useEffect(() => {
+    if (profileBusinessType?.trim()) {
+      setBusinessType(profileBusinessType.trim());
+    }
+  }, [profileBusinessType]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    if (!formCfg.showSizes) setSizesText("");
+    if (!formCfg.showColors) setColorsText("");
+    if (!formCfg.showPortions) setPortionsText("");
+    if (!formCfg.showBrand) setBrandName("");
+    if (!formCfg.showBargaining) setBargainingLowAmount("");
+    if (!formCfg.showPrepTime) setPrepTime("");
+    if (!formCfg.showAllergens) setAllergens("");
+    if (!formCfg.showPriceTiers) setTierAmounts({});
+  }, [formCfg.formKind, modalOpen]);
+
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
     setEditingId(null);
     setProductName("");
     setProductDescription("");
@@ -102,14 +148,37 @@ export function OrdersPanel() {
     setPrepTime("");
     setAllergens("");
     setBargainingLowAmount("");
+    setTierAmounts({});
     setImages([]);
   }, []);
 
+  const openAddModal = useCallback(() => {
+    setEditingId(null);
+    setProductName("");
+    setProductDescription("");
+    setPrice("");
+    setQuantity("0");
+    setSubtractOnOrder(false);
+    setDiscountEnabled(false);
+    setDiscountValue("");
+    setDiscountIsPercent(true);
+    setDiscountValidDate("");
+    setBrandName("");
+    setColorsText("");
+    setSizesText("");
+    setPortionsText("");
+    setPrepTime("");
+    setAllergens("");
+    setBargainingLowAmount("");
+    setTierAmounts({});
+    setImages([]);
+    setModalOpen(true);
+  }, []);
+
   const load = useCallback(async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
+    if (!bootstrapped || needsSetup) {
+      setProducts([]);
       setLoading(false);
-      toast.error("Missing phone number ID. Sign in again after connecting WhatsApp.");
       return;
     }
     setLoading(true);
@@ -119,19 +188,25 @@ export function OrdersPanel() {
       if (!res.ok) {
         const err =
           typeof data.error === "string" ? data.error : "Could not load products.";
-        toast.error(err);
+        if (shouldToastDashboardApiError(err)) {
+          toast.error(err);
+        }
         setProducts([]);
         return;
       }
       setProducts((data as { products?: ProductRow[] }).products ?? []);
       const bt = (data as { businessType?: string | null }).businessType;
       setBusinessType(typeof bt === "string" && bt.trim() ? bt.trim() : null);
+      const cur = (data as { currency?: string | null }).currency;
+      if (typeof cur === "string" && cur.trim()) {
+        setCurrency(normalizeCurrency(cur));
+      }
     } catch {
       toast.error("Network error loading products.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bootstrapped, needsSetup]);
 
   useEffect(() => {
     void load();
@@ -157,16 +232,23 @@ export function OrdersPanel() {
     return out;
   }, [formCfg, sizesArray, colorsArray, portionsArray]);
 
-  function buildProductDescription(base: string): string | null {
-    const parts: string[] = [];
-    if (base.trim()) parts.push(base.trim());
-    if (formCfg.showPrepTime && prepTime.trim()) {
-      parts.push(`Prep time: ${prepTime.trim()}`);
-    }
-    if (formCfg.showAllergens && allergens.trim()) {
-      parts.push(`Allergens: ${allergens.trim()}`);
-    }
-    return parts.length ? parts.join("\n") : null;
+  function buildProductDescriptionForSave(base: string): string | null {
+    const tiers = formCfg.showPriceTiers
+      ? formCfg.priceTiers.map((t) => ({
+          label: t.label,
+          amount: tierAmounts[t.key]?.trim() ?? "",
+        }))
+      : [];
+
+    return mergeProductDescription({
+      notes: base,
+      tiers,
+      currencyPrefix: moneySym,
+      prepTime,
+      allergens,
+      showPrepTime: formCfg.showPrepTime,
+      showAllergens: formCfg.showAllergens,
+    });
   }
 
   function parseFoodExtrasFromDescription(desc: string | null) {
@@ -186,6 +268,7 @@ export function OrdersPanel() {
   }
 
   const fillForm = (p: ProductRow) => {
+    const cfg = createProductFormConfig(effectiveBusinessType);
     setEditingId(p.id);
     setProductName(p.productName);
     setPrice(p.price);
@@ -195,26 +278,35 @@ export function OrdersPanel() {
     setDiscountValue(p.discountValue ?? "");
     setDiscountIsPercent(p.discountIsPercent);
     setDiscountValidDate(p.discountValidDate ?? "");
-    setBrandName(p.brandName ?? "");
+    setBrandName(cfg.showBrand ? p.brandName ?? "" : "");
     setColorsText("");
     setSizesText("");
     setPortionsText("");
-    if (formCfg.showPortions) {
-      setPortionsText(p.colors.length ? p.colors.join(", ") : "");
-    } else if (formCfg.showSizes) {
-      setSizesText(p.colors.length ? p.colors.join(", ") : "");
-      setColorsText("");
-    } else if (formCfg.showColors) {
-      setColorsText(p.colors.length ? p.colors.join(", ") : "");
-    } else {
-      setColorsText(p.colors.length ? p.colors.join(", ") : "");
+    const variants = p.colors.length ? p.colors.join(", ") : "";
+    if (cfg.showPortions) {
+      setPortionsText(variants);
+    } else if (cfg.showSizes) {
+      setSizesText(variants);
+    } else if (cfg.showColors) {
+      setColorsText(variants);
     }
-    const foodBits = parseFoodExtrasFromDescription(p.productDescription);
+    const descParts = parseDescriptionParts(p.productDescription);
+    const foodBits = parseFoodExtrasFromDescription(descParts.notes);
     setProductDescription(foodBits.base);
+    const nextTiers: Record<string, string> = {};
+    for (const t of cfg.priceTiers) {
+      nextTiers[t.key] = tierAmountForField(
+        descParts.tierAmounts,
+        t.label,
+        t.key
+      );
+    }
+    setTierAmounts(nextTiers);
     setPrepTime(foodBits.prep);
     setAllergens(foodBits.allergen);
     setBargainingLowAmount(p.bargainingLowAmount ?? "");
     setImages([...p.images]);
+    setModalOpen(true);
   };
 
   const onPickImages = async (files: FileList | null) => {
@@ -252,11 +344,6 @@ export function OrdersPanel() {
   };
 
   const submit = async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
-      toast.error("Missing phone number ID.");
-      return;
-    }
     if (!productName.trim()) {
       toast.error("Name is required.");
       return;
@@ -266,7 +353,7 @@ export function OrdersPanel() {
       return;
     }
     if (formCfg.colorsRequired && colorsArray.length === 0) {
-      toast.error("Add at least one color or variant.");
+      toast.error("Add at least one color (comma-separated).");
       return;
     }
     const pNum = Number.parseFloat(price);
@@ -277,7 +364,7 @@ export function OrdersPanel() {
 
     const payload = {
       productName: productName.trim(),
-      productDescription: buildProductDescription(productDescription),
+      productDescription: buildProductDescriptionForSave(productDescription),
       price: pNum,
       quantity: 0,
       subtractOnOrder: false,
@@ -314,7 +401,7 @@ export function OrdersPanel() {
         return;
       }
       toast.success(editingId ? "Product updated." : "Product saved.");
-      resetForm();
+      closeModal();
       await load();
     } catch {
       toast.error("Network error while saving.");
@@ -335,27 +422,7 @@ export function OrdersPanel() {
         return;
       }
       toast.success("Deleted.");
-      if (editingId === id) resetForm();
-      await load();
-    } catch {
-      toast.error("Network error.");
-    }
-  };
-
-  const recordSale = async (id: number) => {
-    try {
-      const res = await dashboardFetch(`/api/products/${id}/sale`, {
-        method: "POST",
-        cache: "no-store",
-        body: JSON.stringify({ qty: 1 }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(typeof data.error === "string" ? data.error : "Could not record sale.");
-        return;
-      }
-      toast.success("Sale recorded.");
-      window.dispatchEvent(new Event(COMPLETED_ORDERS_CHANGED_EVENT));
+      if (editingId === id) closeModal();
       await load();
     } catch {
       toast.error("Network error.");
@@ -365,30 +432,202 @@ export function OrdersPanel() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center p-12 bg-[#f0f2f5]">
-        <div className="animate-spin h-10 w-10 border-4 border-[#075E54] border-t-transparent rounded-full" />
+        <BallLoader size="lg" />
       </div>
     );
   }
 
+  const variantColumnLabel =
+    formCfg.variantColumnLabel || (showVariantColumn ? "Variants" : "");
+
   return (
-    <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-y-auto lg:overflow-hidden bg-[#f0f2f5] overscroll-y-contain">
-      <div className="lg:w-[min(440px,100%)] lg:shrink-0 border-b lg:border-b-0 lg:border-r border-black/8 lg:overflow-y-auto lg:max-h-full p-4 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-[#111b21]">
-            {editingId ? "Edit product" : "New product"}
-          </h2>
-          {editingId != null && (
+    <div className="flex flex-col flex-1 min-h-0 h-full max-h-[calc(100dvh-10.5rem)] overflow-hidden bg-[#f0f2f5]">
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-black/8 bg-white">
+        <div>
+          <h2 className="text-sm font-bold text-[#111b21]">Your products</h2>
+          <p className="text-[11px] text-[#667781] mt-0.5">{formCfg.panelHint}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="text-xs font-bold text-[#075E54] hover:underline px-2 py-1.5"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#075E54] text-white text-xs sm:text-sm font-bold hover:bg-[#054d45] transition-colors"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            Add product
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto p-4">
+        {products.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-black/15 bg-white/80 p-8 text-center max-w-md mx-auto mt-8">
+            <span className="material-symbols-outlined text-[#667781] text-4xl mb-3 block">
+              inventory_2
+            </span>
+            <p className="text-sm text-[#667781] mb-4">
+              No products yet. Add your first product so the AI can sell them on WhatsApp.
+            </p>
             <button
               type="button"
-              onClick={resetForm}
-              className="text-xs font-semibold text-[#075E54] hover:underline"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#075E54] text-white text-sm font-bold"
             >
-              Cancel edit
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              Add product
             </button>
-          )}
-        </div>
+            <p className="text-[11px] text-[#667781] mt-4">
+              If saving fails with “No business record”, complete{" "}
+              <a href="/get-started" className="text-[#075E54] font-semibold underline">
+                Get Started
+              </a>{" "}
+              first.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-black/8 bg-white shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm text-left">
+                <thead>
+                  <tr className="bg-[#f0f2f5] border-b border-black/8 text-[11px] uppercase tracking-wide text-[#54656f]">
+                    <th className="px-3 py-3 font-semibold w-16">Image</th>
+                    <th className="px-3 py-3 font-semibold">Product</th>
+                    {formCfg.showBrand ? (
+                      <th className="px-3 py-3 font-semibold hidden sm:table-cell">
+                        Brand
+                      </th>
+                    ) : null}
+                    {showVariantColumn ? (
+                      <th className="px-3 py-3 font-semibold">
+                        {variantColumnLabel}
+                      </th>
+                    ) : null}
+                    <th className="px-3 py-3 font-semibold text-right">Price</th>
+                    <th className="px-3 py-3 font-semibold text-center w-16">Qty</th>
+                    <th className="px-3 py-3 font-semibold text-right w-32">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/6">
+                  {products.map((p) => {
+                    const ep = effectivePrice(p);
+                    const list = Number.parseFloat(p.price) || 0;
+                    const showDeal =
+                      p.discountEnabled && Math.abs(ep - list) > 0.009;
+                    return (
+                      <tr key={p.id} className="hover:bg-[#f8f9fa] transition-colors">
+                        <td className="px-3 py-2.5">
+                          <div className="w-12 h-12 rounded-lg bg-[#e9edef] overflow-hidden border border-black/6 relative shrink-0">
+                            {p.images[0] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.images[0]}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[#667781] text-[9px]">
+                                —
+                              </div>
+                            )}
+                            {p.images.length > 1 ? (
+                              <span className="absolute bottom-0 right-0 bg-black/65 text-white text-[8px] font-bold px-0.5 rounded-tl">
+                                +{p.images.length - 1}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 min-w-[120px]">
+                          <p className="font-semibold text-[#111b21]">{p.productName}</p>
+                          {formCfg.showBargaining &&
+                          p.bargainingLowAmount != null ? (
+                            <p className="text-[10px] text-[#667781] mt-0.5">
+                              Floor {Number.parseFloat(p.bargainingLowAmount).toFixed(2)}
+                            </p>
+                          ) : null}
+                        </td>
+                        {formCfg.showBrand ? (
+                          <td className="px-3 py-2.5 hidden sm:table-cell text-[#667781]">
+                            {p.brandName || "—"}
+                          </td>
+                        ) : null}
+                        {showVariantColumn ? (
+                          <td className="px-3 py-2.5 text-[#128C7E] text-xs max-w-[140px] truncate">
+                            {p.colors.length > 0 ? p.colors.join(", ") : "—"}
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">
+                          <span>{formatMoney(list, effectiveCurrency)}</span>
+                          {showDeal && (
+                            <span className="block text-[#128C7E] text-[11px] font-semibold">
+                              {formatMoney(ep, effectiveCurrency)} deal
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-[#667781]">
+                          {p.quantity}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => fillForm(p)}
+                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-[#e9edef] text-[#111b21] hover:bg-[#dfe5e7]"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void removeProduct(p.id)}
+                              className="text-xs font-bold px-2.5 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
 
-        <p className="text-[11px] text-[#667781] rounded-lg bg-white/80 border border-black/6 px-3 py-2">
+      {modalOpen ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="product-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeModal();
+          }}
+        >
+          <div className="w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white shadow-xl border border-black/10">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-4 py-3 border-b border-black/8 bg-white">
+              <h2 id="product-modal-title" className="text-sm font-bold text-[#111b21]">
+                {editingId ? "Edit product" : "Add product"}
+              </h2>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="p-1.5 rounded-lg text-[#54656f] hover:bg-[#f0f2f5]"
+                aria-label="Close"
+              >
+                <span className="material-symbols-outlined text-[22px]">close</span>
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+        <p className="text-[11px] text-[#667781] rounded-lg bg-[#f0f2f5] border border-black/6 px-3 py-2">
           <span className="font-semibold text-[#075E54]">
             {formCfg.businessTypeLabel}
           </span>
@@ -410,11 +649,51 @@ export function OrdersPanel() {
           <textarea
             value={productDescription}
             onChange={(e) => setProductDescription(e.target.value)}
-            rows={3}
+            rows={formCfg.descriptionRows}
             placeholder={formCfg.descriptionPlaceholder}
             className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-[#111b21] outline-none focus:ring-2 focus:ring-[#075E54]/25 resize-y"
           />
+          {formCfg.descriptionHint ? (
+            <span className="block mt-1.5 text-[11px] font-normal text-[#667781] leading-relaxed">
+              {formCfg.descriptionHint}
+            </span>
+          ) : null}
         </label>
+
+        {formCfg.showPriceTiers && formCfg.priceTiers.length > 0 ? (
+          <div className="rounded-xl border border-[#075E54]/20 bg-[#f0f9f6] p-3 space-y-3">
+            <p className="text-xs font-bold text-[#075E54]">
+              Prices by size / portion
+            </p>
+            {formCfg.priceFieldHint ? (
+              <p className="text-[11px] text-[#667781] leading-relaxed">
+                {formCfg.priceFieldHint}
+              </p>
+            ) : null}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {formCfg.priceTiers.map((tier) => (
+                <label
+                  key={tier.key}
+                  className="block text-[11px] font-semibold text-[#54656f]"
+                >
+                  {tier.label}
+                  <input
+                    inputMode="decimal"
+                    value={tierAmounts[tier.key] ?? ""}
+                    onChange={(e) =>
+                      setTierAmounts((prev) => ({
+                        ...prev,
+                        [tier.key]: e.target.value,
+                      }))
+                    }
+                    placeholder={`${moneySym} ${tier.placeholder.replace(/^e\.g\.\s*/i, "").replace(/[^\d.]/g, "") || "0"}`}
+                    className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {formCfg.showPrepTime ? (
           <label className="block text-xs font-semibold text-[#54656f]">
@@ -441,12 +720,12 @@ export function OrdersPanel() {
         ) : null}
 
         <label className="block text-xs font-semibold text-[#54656f]">
-          Price *
+          Price ({effectiveCurrency}) *
           <input
             inputMode="decimal"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="0.00"
+            placeholder={`${moneySym} 0`}
             className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
           />
         </label>
@@ -560,7 +839,11 @@ export function OrdersPanel() {
         {formCfg.showImages ? (
           <>
         <label className="block text-xs font-semibold text-[#54656f]">
-          Product images (JPG / PNG)
+          {formCfg.formKind === "food"
+            ? "Menu photos (JPG / PNG)"
+            : formCfg.formKind === "booking"
+              ? "Service photos (JPG / PNG)"
+              : "Product images (JPG / PNG)"}
           <input
             type="file"
             accept="image/jpeg,image/png,.jpg,.jpeg,.png"
@@ -616,133 +899,27 @@ export function OrdersPanel() {
           </>
         ) : null}
 
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void submit()}
-          className="w-full py-2.5 rounded-lg bg-[#075E54] text-white text-sm font-bold hover:bg-[#054d45] disabled:opacity-50 transition-colors"
-        >
-          {saving ? "Saving…" : editingId ? "Update product" : "Save product"}
-        </button>
-      </div>
-
-      <div className="p-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-bold text-[#111b21]">Your products</h3>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="text-xs font-bold text-[#075E54] hover:underline"
-          >
-            Refresh
-          </button>
-        </div>
-        {products.length === 0 ? (
-          <p className="text-sm text-[#667781]">
-            No products yet. Add one on the left. If saving fails with “No business
-            record”, complete{" "}
-            <a href="/get-started" className="text-[#075E54] font-semibold underline">
-              Get Started
-            </a>{" "}
-            for this WhatsApp number first.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {products.map((p) => {
-              const ep = effectivePrice(p);
-              const list = Number.parseFloat(p.price) || 0;
-              const showDeal = p.discountEnabled && Math.abs(ep - list) > 0.009;
-              return (
-                <li
-                  key={p.id}
-                  className="rounded-xl border border-black/8 bg-white p-3 shadow-sm flex gap-3"
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 py-2.5 rounded-lg border border-black/10 text-sm font-semibold text-[#54656f] hover:bg-[#f0f2f5]"
                 >
-                  <div className="w-20 h-20 shrink-0 rounded-lg bg-[#e9edef] overflow-hidden border border-black/6 relative">
-                    {p.images[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.images[0]}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[#667781] text-xs">
-                        No image
-                      </div>
-                    )}
-                    {p.images.length > 1 ? (
-                      <span className="absolute bottom-0 right-0 bg-black/65 text-white text-[9px] font-bold px-1 rounded-tl">
-                        +{p.images.length - 1}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-[#111b21] truncate">
-                      {p.productName}
-                    </p>
-                    {p.brandName && (
-                      <p className="text-[11px] text-[#667781] truncate">{p.brandName}</p>
-                    )}
-                    {p.colors.length > 0 && (
-                      <p className="text-[11px] text-[#128C7E] mt-0.5 truncate">
-                        Colors: {p.colors.join(", ")}
-                      </p>
-                    )}
-                    <p className="text-sm text-[#111b21] mt-1">
-                      <span className="font-mono">{list.toFixed(2)}</span>
-                      {showDeal && (
-                        <span className="text-[#128C7E] font-semibold ml-2">
-                          → {ep.toFixed(2)} today
-                        </span>
-                      )}
-                      <span className="text-[#667781] ml-2">Qty {p.quantity}</span>
-                    </p>
-                    {p.bargainingLowAmount != null && (
-                      <p className="text-[11px] text-[#667781] mt-0.5">
-                        Bargain floor:{" "}
-                        <span className="font-mono">
-                          {Number.parseFloat(p.bargainingLowAmount).toFixed(2)}
-                        </span>
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <button
-                        type="button"
-                        onClick={() => fillForm(p)}
-                        className="text-xs font-bold px-3 py-1.5 rounded-full bg-[#e9edef] text-[#111b21] hover:bg-[#dfe5e7]"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void removeProduct(p.id)}
-                        className="text-xs font-bold px-3 py-1.5 rounded-full bg-red-50 text-red-700 hover:bg-red-100"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        type="button"
-                        disabled={p.subtractOnOrder && p.quantity <= 0}
-                        onClick={() => void recordSale(p.id)}
-                        className="text-xs font-bold px-3 py-1.5 rounded-full bg-[#dcf8c6] text-[#111b21] hover:bg-[#c8edb5] disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={
-                          p.subtractOnOrder && p.quantity <= 0
-                            ? "No stock left to sell with inventory tracking on."
-                            : p.subtractOnOrder
-                              ? "Logs a completed order and reduces quantity by 1."
-                              : "Logs a completed order (inventory tracking is off for this product)."
-                        }
-                      >
-                        Mark order done
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void submit()}
+                  className="flex-1 py-2.5 rounded-lg bg-[#075E54] text-white text-sm font-bold hover:bg-[#054d45] disabled:opacity-50 transition-colors"
+                >
+                  {saving ? "Saving…" : editingId ? "Update" : "Save product"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

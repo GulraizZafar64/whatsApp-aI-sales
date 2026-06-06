@@ -31,9 +31,13 @@ export function previewWhatsAppBody(message: WhatsAppMessagePayload): string {
 }
 
 export async function saveIncomingWhatsAppMessage(
-  businessPhoneNumberId: string | undefined,
+  businessId: number,
   message: Record<string, unknown>,
-  options?: { senderName?: string }
+  options?: {
+    senderName?: string;
+    whatsappChatId?: string | null;
+    waMessageKey?: string | null;
+  }
 ): Promise<void> {
   const m = message as WhatsAppMessagePayload;
   const from = typeof m.from === "string" ? m.from : "";
@@ -42,32 +46,33 @@ export async function saveIncomingWhatsAppMessage(
 
   try {
     await ensureDb();
-    const row = await WhatsAppMessage.create({
-      businessPhoneNumberId: businessPhoneNumberId ?? null,
+    const chatJid = options?.whatsappChatId?.trim() || null;
+    const waMessageKey = options?.waMessageKey?.trim() || null;
+    if (waMessageKey) {
+      const existing = await WhatsAppMessage.findOne({
+        where: { businessId, waMessageKey },
+        attributes: ["id"],
+      });
+      if (existing) return;
+    }
+    await WhatsAppMessage.create({
+      businessId,
       senderWaId: from,
+      whatsappChatId: chatJid,
       senderName: options?.senderName ?? null,
       text: msgBody,
       messageType: msgType,
       direction: "incoming",
       status: "unread",
-    });
-
-    console.log("[whatsapp] Message saved:", {
-      id: row.id,
-      from,
-      text: msgBody,
-      messageType: msgType,
-      senderName: options?.senderName ?? null,
-      businessPhoneNumberId: businessPhoneNumberId ?? null,
+      waMessageKey,
     });
   } catch (error) {
     console.error("[whatsapp] Failed to persist message:", error);
   }
 }
 
-/** Replace [Voice message] placeholder with Whisper transcript in inbox. */
 export async function updateLatestIncomingAudioTranscript(params: {
-  businessPhoneNumberId: string;
+  businessId: number;
   senderWaId: string;
   transcript: string;
   detectedLanguage?: string;
@@ -79,7 +84,7 @@ export async function updateLatestIncomingAudioTranscript(params: {
     await ensureDb();
     const row = await WhatsAppMessage.findOne({
       where: {
-        businessPhoneNumberId: params.businessPhoneNumberId,
+        businessId: params.businessId,
         senderWaId: params.senderWaId,
         direction: "incoming",
         messageType: "audio",

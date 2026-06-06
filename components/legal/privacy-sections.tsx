@@ -1,6 +1,11 @@
 import Link from "next/link";
 import type { LegalSection } from "@/components/legal/LegalPageShell";
-import { APP_NAME, OPERATOR_NAME, PRIVACY_EMAIL, SUPPORT_EMAIL } from "@/lib/legal-site";
+import {
+  APP_NAME,
+  OPERATOR_NAME,
+  LEGAL_WHATSAPP_PRIVACY,
+  LEGAL_WHATSAPP_SUPPORT,
+} from "@/lib/legal-site";
 
 export const privacySections: LegalSection[] = [
   {
@@ -219,8 +224,11 @@ export const privacySections: LegalSection[] = [
           <li>Lodge a complaint with a supervisory authority.</li>
         </ul>
         <p>
-          To exercise rights, email{" "}
-          <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. We may verify your identity. For customer data,
+          To exercise rights, contact us on{" "}
+          <a href={LEGAL_WHATSAPP_PRIVACY} target="_blank" rel="noopener noreferrer">
+            WhatsApp (privacy requests)
+          </a>
+          . We may verify your identity. For customer data,
           contact your seller (the business) first; we can support them on your request where applicable.
         </p>
         <p>
@@ -272,16 +280,22 @@ export const privacySections: LegalSection[] = [
       <>
         <p>
           We may update this Privacy Policy. We will post the new version with an updated date. Material changes may
-          be notified via the Service or email where appropriate.
+          be notified via the Service or WhatsApp where appropriate.
         </p>
         <p>
-          <strong>Contact:</strong>
+          <strong>Contact (WhatsApp only):</strong>
           <br />
-          Privacy: <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>
+          Privacy:{" "}
+          <a href={LEGAL_WHATSAPP_PRIVACY} target="_blank" rel="noopener noreferrer">
+            Message us on WhatsApp
+          </a>
           <br />
-          Support: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+          Support:{" "}
+          <a href={LEGAL_WHATSAPP_SUPPORT} target="_blank" rel="noopener noreferrer">
+            Support on WhatsApp
+          </a>
           <br />
-          <Link href="/contact-us">Contact form</Link>
+          <Link href="/contact-us">Contact page</Link>
         </p>
       </>
     ),

@@ -1,3 +1,9 @@
+import Link from "next/link";
+import {
+  DemoPageLink,
+  ExpertWhatsappLink,
+} from "@/components/marketing/MarketingCta";
+
 export default function DemoPage() {
   return (
     <main className="pt-16">
@@ -9,14 +15,21 @@ export default function DemoPage() {
           <p className="text-headline-sm text-secondary mb-4">Watch how AI handles your customer conversations automatically</p>
           <p className="text-body-lg text-secondary/80 mb-10">This is exactly how your WhatsApp will respond to customers in real-time.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button className="px-8 py-4 bg-primary text-on-primary font-semibold rounded-xl shadow-lg hover:opacity-90 transition-all active:scale-95">Try Demo</button>
-            <button className="px-8 py-4 bg-white border border-outline-variant text-on-surface font-semibold rounded-xl hover:bg-gray-50 transition-all active:scale-95">Start Free Demo</button>
+            <a
+              href="#demo-chat"
+              className="px-8 py-4 bg-primary text-on-primary font-semibold rounded-xl shadow-lg hover:opacity-90 transition-all active:scale-95 text-center"
+            >
+              Try Demo
+            </a>
+            <DemoPageLink className="px-8 py-4 bg-white border border-outline-variant text-on-surface font-semibold rounded-xl hover:bg-gray-50 transition-all active:scale-95 text-center">
+              Start Free Demo
+            </DemoPageLink>
           </div>
         </div>
       </section>
 
       {/* Interactive Chat Demo Section */}
-      <section className="py-section-padding-md bg-white">
+      <section id="demo-chat" className="py-section-padding-md bg-white scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter bg-surface-container-lowest rounded-3xl border border-outline-variant overflow-hidden shadow-sm">
             {/* Sidebar Controls */}
@@ -258,8 +271,15 @@ export default function DemoPage() {
           <h2 className="text-display-lg mb-6 relative z-10">Ready to automate your WhatsApp?</h2>
           <p className="text-headline-sm opacity-90 mb-12 relative z-10">Start getting more customers today with the world&apos;s most intelligent assistant.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10">
-            <button className="px-10 py-5 bg-white text-primary font-bold rounded-2xl shadow-xl hover:bg-gray-100 transition-all active:scale-95">Get Started</button>
-            <button className="px-10 py-5 bg-white/10 text-white font-bold rounded-2xl border border-white/20 hover:bg-white/20 transition-all active:scale-95">Request Live Demo</button>
+            <Link
+              href="/get-started"
+              className="px-10 py-5 bg-white text-primary font-bold rounded-2xl shadow-xl hover:bg-gray-100 transition-all active:scale-95 text-center"
+            >
+              Get Started
+            </Link>
+            <ExpertWhatsappLink className="px-10 py-5 bg-white/10 text-white font-bold rounded-2xl border border-white/20 hover:bg-white/20 transition-all active:scale-95 text-center">
+              Request Live Demo
+            </ExpertWhatsappLink>
           </div>
         </div>
       </section>

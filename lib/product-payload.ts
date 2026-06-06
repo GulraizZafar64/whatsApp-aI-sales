@@ -1,3 +1,4 @@
+import { createProductFormConfig } from "@/lib/product-form-config";
 import {
   ALLOWED_PRODUCT_IMAGE_MIME,
   normalizeProductImageDataUrl,
@@ -18,6 +19,21 @@ export function normalizeColors(colors: unknown): string[] {
     .filter((x): x is string => typeof x === "string")
     .map((c) => c.trim())
     .filter(Boolean);
+}
+
+/** Variant labels (sizes, colors, portions) — rules depend on business type. */
+export function validateProductVariants(
+  businessType: string | null | undefined,
+  variants: string[]
+): string | null {
+  const cfg = createProductFormConfig(businessType);
+  if (cfg.sizesRequired && variants.length === 0) {
+    return "Add at least one size (comma-separated).";
+  }
+  if (cfg.colorsRequired && variants.length === 0) {
+    return "Add at least one color (comma-separated).";
+  }
+  return null;
 }
 
 export function normalizeImages(images: unknown): string[] {

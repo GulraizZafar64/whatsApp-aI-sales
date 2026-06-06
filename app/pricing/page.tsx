@@ -1,8 +1,11 @@
+import Link from "next/link";
+import { PricingPlansGrid } from "@/components/pricing/PricingPlansGrid";
+
 export default function PricingPage() {
   return (
     <main>
       {/* Hero Section */}
-      <section className="pt-32 pb-16 text-center px-6">
+      <section className="pt-12 pb-16 text-center px-6">
         <div className="max-w-3xl mx-auto">
           <span className="bg-primary-container/20 text-on-primary-container px-4 py-1 rounded-full text-label-sm font-bold mb-6 inline-block">Simple, Transparent Pricing</span>
           <h1 className="text-display-xl tracking-tight text-on-surface mb-6">Start small, scale as your business grows</h1>
@@ -13,118 +16,8 @@ export default function PricingPage() {
       </section>
 
       {/* Pricing Cards */}
-      <section className="max-w-container-max mx-auto px-6 pb-24">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-          {/* Starter Plan */}
-          <div className="bg-surface-container-lowest border border-gray-100 rounded-xl p-8 shadow-sm flex flex-col">
-            <div className="mb-8">
-              <h3 className="text-headline-sm mb-2">Starter</h3>
-              <p className="text-secondary text-label-md">Best for Small businesses</p>
-            </div>
-            <div className="mb-8">
-              <span className="text-display-lg">$10</span>
-              <span className="text-secondary text-label-md">/month</span>
-            </div>
-            <ul className="space-y-4 mb-10 flex-grow">
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Basic auto replies</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Up to 500 messages/month</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">1 WhatsApp number</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Basic support</span>
-              </li>
-            </ul>
-            <button className="w-full border border-outline-variant text-on-surface py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors">Choose Starter</button>
-          </div>
-          {/* Pro Plan (Highlighted) */}
-          <div className="relative bg-surface-container-lowest border-2 border-primary rounded-xl p-8 shadow-xl flex flex-col transform md:-translate-y-4">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-on-primary text-label-sm font-bold px-4 py-1 rounded-full uppercase tracking-wider">Most Popular</div>
-            <div className="mb-8">
-              <h3 className="text-headline-sm mb-2">Pro</h3>
-              <p className="text-secondary text-label-md">Best for Growing businesses</p>
-            </div>
-            <div className="mb-8">
-              <span className="text-display-lg">$30</span>
-              <span className="text-secondary text-label-md">/month</span>
-            </div>
-            <ul className="space-y-4 mb-10 flex-grow">
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-                <span className="text-body-md text-on-surface">AI-powered smart replies</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-                <span className="text-body-md text-on-surface">Product-based responses</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-                <span className="text-body-md text-on-surface">Up to 2,000 messages/month</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-                <span className="text-body-md text-on-surface">Order handling</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-                <span className="text-body-md text-on-surface">Priority support</span>
-              </li>
-            </ul>
-            <button className="w-full bg-primary text-on-primary py-3 rounded-lg font-bold shadow-md hover:opacity-90 active:scale-[0.98] transition-all">Get Started with Pro</button>
-          </div>
-          {/* Business Plan */}
-          <div className="bg-surface-container-lowest border border-gray-100 rounded-xl p-8 shadow-sm flex flex-col">
-            <div className="mb-8">
-              <h3 className="text-headline-sm mb-2">Business</h3>
-              <p className="text-secondary text-label-md">Best for Advanced users / teams</p>
-            </div>
-            <div className="mb-8">
-              <span className="text-display-lg">$80</span>
-              <span className="text-secondary text-label-md">/month</span>
-            </div>
-            <ul className="space-y-4 mb-10 flex-grow">
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Unlimited AI conversations</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Multi-product support</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Advanced automation</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Analytics dashboard</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="material-symbols-outlined text-primary text-lg">check_circle</span>
-                <span className="text-body-md text-on-surface-variant">Multi-user access</span>
-              </li>
-            </ul>
-            <button className="w-full border border-outline-variant text-on-surface py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors">Choose Business</button>
-          </div>
-        </div>
+      <section className="max-w-container-max mx-auto px-4 sm:px-6 pb-16 sm:pb-24">
+        <PricingPlansGrid />
       </section>
 
       {/* Comparison Table */}
@@ -140,7 +33,7 @@ export default function PricingPage() {
                 <th className="py-6 px-4 text-label-md text-secondary font-medium">Feature</th>
                 <th className="py-6 px-4 text-label-md text-on-surface text-center font-medium">Starter</th>
                 <th className="py-6 px-4 text-label-md text-on-surface text-center bg-gray-50/50 rounded-t-xl font-medium">Pro</th>
-                <th className="py-6 px-4 text-label-md text-on-surface text-center font-medium">Business</th>
+                <th className="py-6 px-4 text-label-md text-on-surface text-center font-medium">Enterprise</th>
               </tr>
             </thead>
             <tbody className="text-body-md">
@@ -172,9 +65,21 @@ export default function PricingPage() {
               </tr>
               <tr className="border-b border-gray-100 hover:bg-gray-50/30 transition-colors">
                 <td className="py-5 px-4 font-medium">Support level</td>
-                <td className="py-5 px-4 text-center text-secondary">Email</td>
-                <td className="py-5 px-4 text-center font-semibold text-on-surface bg-gray-50/50">Priority Chat</td>
-                <td className="py-5 px-4 text-center text-secondary">24/7 Dedicated Manager</td>
+                <td className="py-5 px-4 text-center text-secondary">Basic support</td>
+                <td className="py-5 px-4 text-center font-semibold text-on-surface bg-gray-50/50">Basic support</td>
+                <td className="py-5 px-4 text-center text-secondary">Personal + developer help</td>
+              </tr>
+              <tr className="border-b border-gray-100 hover:bg-gray-50/30 transition-colors">
+                <td className="py-5 px-4 font-medium">Custom features</td>
+                <td className="py-5 px-4 text-center">
+                  <span className="material-symbols-outlined text-gray-300">close</span>
+                </td>
+                <td className="py-5 px-4 text-center bg-gray-50/50">
+                  <span className="material-symbols-outlined text-gray-300">close</span>
+                </td>
+                <td className="py-5 px-4 text-center">
+                  <span className="material-symbols-outlined text-primary">done</span>
+                </td>
               </tr>
               <tr className="border-b border-gray-100 hover:bg-gray-50/30 transition-colors">
                 <td className="py-5 px-4 font-medium">Multi-user support</td>
@@ -288,8 +193,10 @@ export default function PricingPage() {
             <p className="text-body-md text-on-surface-variant">No, SalesAI is designed for everyone. You can set up your AI assistant in minutes with our intuitive dashboard, no coding required.</p>
           </div>
           <div className="border-b border-gray-100 pb-6">
-            <h3 className="text-label-md text-on-surface mb-2 font-medium">Can I connect multiple WhatsApp numbers?</h3>
-            <p className="text-body-md text-on-surface-variant">The Starter and Pro plans support 1 number. Our Business plan allows for multi-number connections and centralized management.</p>
+            <h3 className="text-label-md text-on-surface mb-2 font-medium">How is Enterprise pricing set?</h3>
+            <p className="text-body-md text-on-surface-variant">
+              Enterprise is tailored to your business. Contact our team and we will share custom pricing, features, and API access details.
+            </p>
           </div>
           <div className="border-b border-gray-100 pb-6">
             <h3 className="text-label-md text-on-surface mb-2 font-medium">What happens if I exceed message limits?</h3>
@@ -312,7 +219,12 @@ export default function PricingPage() {
           <div className="relative z-10">
             <h2 className="text-display-lg mb-4">Start Automating Your WhatsApp Today</h2>
             <p className="text-on-primary/80 text-body-lg max-w-xl mx-auto mb-10">Turn conversations into customers with the world&apos;s most intelligent AI sales assistant.</p>
-            <button className="bg-white text-primary text-label-md px-10 py-4 rounded-lg shadow-lg hover:bg-gray-50 active:scale-95 transition-all font-bold">Get Started</button>
+            <Link
+              href="/get-started"
+              className="inline-block bg-white text-primary text-label-md px-10 py-4 rounded-lg shadow-lg hover:bg-gray-50 active:scale-95 transition-all font-bold"
+            >
+              Get Started
+            </Link>
           </div>
         </div>
       </section>

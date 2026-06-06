@@ -2,8 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useDashboard } from "@/components/dashboard/DashboardProvider";
+import { BallLoader } from "@/components/ui/BallLoader";
+import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
 import { dashboardFetch } from "@/lib/dashboard/session";
 import { formatChatPhone } from "@/lib/inbox";
+
+type OrderStatus =
+  | "pending"
+  | "accepted"
+  | "cancellation_requested"
+  | "cancelled"
+  | "dispatched"
+  | "complete"
+  | "rejected"
+  | "deleted";
 
 type OrderRow = {
   id: number;
@@ -16,18 +29,26 @@ type OrderRow = {
   deliveryNote?: string | null;
   customerWaId?: string | null;
   customerName?: string | null;
+  status?: OrderStatus;
+  orderGroupId?: string | null;
+  hasOrderPaymentProof?: boolean;
+  hasDeliveryPaymentProof?: boolean;
   createdAt: string | null;
 };
 
 type OrderGroup = {
   key: string;
+  orderGroupId: string | null;
   customerWaId: string | null;
   customerName: string | null;
   deliveryNote: string | null;
   orderSource: string;
+  status: OrderStatus;
   createdAt: string | null;
   lines: OrderRow[];
   totalBill: number;
+  hasOrderPaymentProof: boolean;
+  hasDeliveryPaymentProof: boolean;
 };
 
 type Props = {
@@ -41,13 +62,34 @@ function parseMoney(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function rowStatus(row: OrderRow): OrderStatus {
+  const s = row.status;
+  if (
+    s === "pending" ||
+    s === "accepted" ||
+    s === "cancellation_requested" ||
+    s === "cancelled" ||
+    s === "dispatched" ||
+    s === "complete" ||
+    s === "rejected" ||
+    s === "deleted"
+  ) {
+    return s;
+  }
+  return "pending";
+}
+
 function groupOrders(rows: OrderRow[]): OrderGroup[] {
   const sorted = [...rows].sort((a, b) => b.id - a.id);
   const groups: OrderGroup[] = [];
 
   for (const row of sorted) {
+    const groupId = row.orderGroupId?.trim();
     const t = row.createdAt ? new Date(row.createdAt).getTime() : 0;
     const prev = groups[groups.length - 1];
+    const sameGroup =
+      groupId &&
+      prev?.orderGroupId === groupId;
     const sameCustomer =
       (row.customerWaId ?? "") === (prev?.customerWaId ?? "") &&
       (row.deliveryNote?.trim() ?? "") === (prev?.deliveryNote?.trim() ?? "");
@@ -55,25 +97,88 @@ function groupOrders(rows: OrderRow[]): OrderGroup[] {
     const closeInTime =
       prev && t > 0 && prevT > 0 && Math.abs(t - prevT) <= GROUP_WINDOW_MS;
 
-    if (prev && sameCustomer && closeInTime) {
+    if (prev && (sameGroup || (!groupId && sameCustomer && closeInTime))) {
       prev.lines.push(row);
       prev.totalBill += parseMoney(row.lineTotal);
+      const lineStatus = rowStatus(row);
+      const rank = (s: OrderStatus) =>
+        ({
+          pending: 0,
+          cancellation_requested: 1,
+          accepted: 2,
+          dispatched: 3,
+          complete: 4,
+          cancelled: -2,
+          rejected: -2,
+          deleted: -3,
+        })[s];
+      if (rank(lineStatus) > rank(prev.status)) prev.status = lineStatus;
       if (t > prevT) prev.createdAt = row.createdAt;
+      prev.hasOrderPaymentProof =
+        prev.hasOrderPaymentProof || Boolean(row.hasOrderPaymentProof);
+      prev.hasDeliveryPaymentProof =
+        prev.hasDeliveryPaymentProof || Boolean(row.hasDeliveryPaymentProof);
     } else {
       groups.push({
-        key: `g-${row.id}`,
+        key: groupId ? `grp-${groupId}` : `g-${row.id}`,
+        orderGroupId: groupId ?? null,
         customerWaId: row.customerWaId ?? null,
         customerName: row.customerName ?? null,
         deliveryNote: row.deliveryNote ?? null,
         orderSource: row.orderSource ?? "manual",
+        status: rowStatus(row),
         createdAt: row.createdAt,
         lines: [row],
         totalBill: parseMoney(row.lineTotal),
+        hasOrderPaymentProof: Boolean(row.hasOrderPaymentProof),
+        hasDeliveryPaymentProof: Boolean(row.hasDeliveryPaymentProof),
       });
     }
   }
 
   return groups;
+}
+
+function statusLabel(status: OrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "accepted":
+      return "Accepted";
+    case "cancellation_requested":
+      return "User Wants to Cancel";
+    case "cancelled":
+      return "Cancelled";
+    case "dispatched":
+      return "Dispatched";
+    case "complete":
+      return "Complete";
+    case "rejected":
+      return "Rejected";
+    default:
+      return status;
+  }
+}
+
+function statusClass(status: OrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "bg-amber-100 text-amber-900";
+    case "accepted":
+      return "bg-sky-100 text-sky-900";
+    case "cancellation_requested":
+      return "bg-orange-100 text-orange-900";
+    case "cancelled":
+      return "bg-red-100 text-red-800";
+    case "dispatched":
+      return "bg-violet-100 text-violet-900";
+    case "complete":
+      return "bg-emerald-100 text-emerald-900";
+    case "rejected":
+      return "bg-rose-100 text-rose-900";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
 }
 
 function productSummary(lines: OrderRow[]): string {
@@ -83,18 +188,110 @@ function productSummary(lines: OrderRow[]): string {
   return `${lines.length} items`;
 }
 
+type StatusFilter = "all" | OrderStatus;
+
 export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
+  const { bootstrapped, needsSetup } = useDashboard();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailGroup, setDetailGroup] = useState<OrderGroup | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupOrders(orders), [orders]);
+  const groups = useMemo(() => {
+    const all = groupOrders(orders);
+    if (statusFilter === "all") return all;
+    return all.filter((g) => g.status === statusFilter);
+  }, [orders, statusFilter]);
+
+  async function patchOrder(
+    group: OrderGroup,
+    body: {
+      status?: OrderStatus;
+      accept?: boolean;
+      cancellationAction?: "approve" | "reject";
+    }
+  ) {
+    const key = group.key;
+    const lineIds = group.lines.map((l) => l.id);
+    const nextStatus: OrderStatus = body.accept
+      ? "accepted"
+      : (body.status ?? group.status);
+
+    setActionBusy(key);
+    try {
+      const res = await dashboardFetch("/api/completed-orders/action", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderGroupId: group.orderGroupId ?? undefined,
+          lineIds,
+          ...body,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(
+          typeof json.error === "string" ? json.error : "Could not update order."
+        );
+        return;
+      }
+
+      const applied =
+        (json as { status?: string }).status === nextStatus
+          ? nextStatus
+          : ((json as { status?: string }).status as OrderStatus) || nextStatus;
+
+      setOrders((prev) =>
+        applied === "deleted"
+          ? prev.filter((row) => !lineIds.includes(row.id))
+          : prev.map((row) =>
+              lineIds.includes(row.id) ? { ...row, status: applied } : row
+            )
+      );
+      if (detailGroup?.key === group.key) {
+        if (applied === "deleted") {
+          setDetailGroup(null);
+        } else {
+          setDetailGroup({
+            ...detailGroup,
+            status: applied,
+            lines: detailGroup.lines.map((line) => ({
+              ...line,
+              status: applied,
+            })),
+          });
+        }
+      }
+
+      const jsonMessage =
+        typeof (json as { message?: string }).message === "string"
+          ? (json as { message: string }).message
+          : null;
+      const msg =
+        jsonMessage ??
+        (body.cancellationAction === "approve"
+          ? "Cancellation approved — customer notified."
+          : body.cancellationAction === "reject"
+            ? "Cancellation rejected — customer notified."
+            : body.accept
+              ? "Order accepted — customer notified."
+              : body.status === "dispatched"
+                ? "Order dispatched — customer notified."
+                : "Order updated.");
+      toast.success(msg);
+      void load();
+    } catch {
+      toast.error("Network error.");
+    } finally {
+      setActionBusy(null);
+    }
+  }
 
   const load = useCallback(async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
+    if (!bootstrapped || needsSetup) {
+      setOrders([]);
       setLoading(false);
-      toast.error("Missing phone number ID.");
       return;
     }
     setLoading(true);
@@ -104,19 +301,25 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(
-          typeof json.error === "string" ? json.error : "Could not load orders."
-        );
+        const errMsg =
+          typeof json.error === "string" ? json.error : "Could not load orders.";
+        if (shouldToastDashboardApiError(errMsg)) {
+          toast.error(errMsg);
+        }
         setOrders([]);
         return;
       }
-      setOrders((json as { orders?: OrderRow[] }).orders ?? []);
+      setOrders(
+        ((json as { orders?: OrderRow[] }).orders ?? []).filter(
+          (row) => rowStatus(row) !== "deleted"
+        )
+      );
     } catch {
       toast.error("Network error.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bootstrapped, needsSetup]);
 
   useEffect(() => {
     void load();
@@ -125,7 +328,7 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center p-12 bg-[#f0f2f5]">
-        <div className="animate-spin h-10 w-10 border-4 border-[#075E54] border-t-transparent rounded-full" />
+        <BallLoader size="lg" />
       </div>
     );
   }
@@ -133,7 +336,34 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
   return (
     <>
       <div className="flex-1 min-h-0 flex flex-col bg-[#f0f2f5] p-3 sm:p-4">
-        <div className="flex justify-end mb-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 shrink-0">
+          <div className="flex flex-wrap gap-1">
+            {(
+              [
+                ["all", "All"],
+                ["pending", "Pending"],
+                ["accepted", "Accepted"],
+                ["cancellation_requested", "Cancel Needs"],
+                ["cancelled", "Cancelled"],
+                ["dispatched", "Dispatched"],
+                ["complete", "Complete"],
+                ["rejected", "Rejected"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setStatusFilter(id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                  statusFilter === id
+                    ? "bg-[#075E54] text-white"
+                    : "bg-white text-[#54656f] border border-black/10"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => void load()}
@@ -160,10 +390,13 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
                   </th>
                   <th className="px-3 py-2.5 font-semibold">Delivery</th>
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">
-                    Completed
+                    Status
                   </th>
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">
-                    Detail
+                    Date
+                  </th>
+                  <th className="px-3 py-2.5 font-semibold whitespace-nowrap">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -171,13 +404,13 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
                 {groups.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-4 py-10 text-center text-[#667781] align-top"
                     >
-                      No orders yet. They appear here when a customer sends a delivery
-                      address on WhatsApp, or when you use{" "}
-                      <strong className="text-[#111b21]">Mark order done</strong> on a
-                      product.
+                      No orders yet. They appear when a customer completes checkout on
+                      WhatsApp (configure in{" "}
+                      <strong className="text-[#111b21]">Checkout settings</strong> in the
+                      sidebar).
                     </td>
                   </tr>
                 ) : (
@@ -227,6 +460,13 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
                             {g.deliveryNote?.trim() || "—"}
                           </span>
                         </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${statusClass(g.status)}`}
+                          >
+                            {statusLabel(g.status)}
+                          </span>
+                        </td>
                         <td className="px-3 py-2.5 text-[#54656f] whitespace-nowrap text-xs">
                           {g.createdAt
                             ? new Date(g.createdAt).toLocaleString(undefined, {
@@ -236,13 +476,99 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
                             : "—"}
                         </td>
                         <td className="px-3 py-2.5">
-                          <button
-                            type="button"
-                            onClick={() => setDetailGroup(g)}
-                            className="text-xs font-bold text-[#075E54] hover:underline whitespace-nowrap"
-                          >
-                            View order detail
-                          </button>
+                          <div className="flex flex-col gap-1 items-start">
+                            {g.status === "pending" ? (
+                              <button
+                                type="button"
+                                disabled={actionBusy === g.key}
+                                onClick={() => void patchOrder(g, { accept: true })}
+                                className="text-xs font-bold text-[#128C7E] hover:underline whitespace-nowrap disabled:opacity-50"
+                              >
+                                Accept order
+                              </button>
+                            ) : null}
+                            {g.status === "cancellation_requested" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={actionBusy === g.key}
+                                  onClick={() =>
+                                    void patchOrder(g, {
+                                      cancellationAction: "approve",
+                                    })
+                                  }
+                                  className="text-xs font-bold text-red-700 hover:underline whitespace-nowrap disabled:opacity-50"
+                                >
+                                  Approve cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={actionBusy === g.key}
+                                  onClick={() =>
+                                    void patchOrder(g, {
+                                      cancellationAction: "reject",
+                                    })
+                                  }
+                                  className="text-xs font-bold text-[#54656f] hover:underline whitespace-nowrap disabled:opacity-50"
+                                >
+                                  Reject cancel
+                                </button>
+                              </>
+                            ) : null}
+                            {g.status === "accepted" ? (
+                              <button
+                                type="button"
+                                disabled={actionBusy === g.key}
+                                onClick={() =>
+                                  void patchOrder(g, { status: "dispatched" })
+                                }
+                                className="text-xs font-bold text-violet-700 hover:underline whitespace-nowrap disabled:opacity-50"
+                              >
+                                Mark dispatched
+                              </button>
+                            ) : null}
+                            {g.status !== "complete" ? (
+                              <button
+                                type="button"
+                                disabled={actionBusy === g.key}
+                                onClick={() =>
+                                  void patchOrder(g, { status: "complete" })
+                                }
+                                className="text-xs font-bold text-[#075E54] hover:underline whitespace-nowrap disabled:opacity-50"
+                              >
+                                Mark complete
+                              </button>
+                            ) : null}
+                            {g.status !== "pending" ? (
+                              <button
+                                type="button"
+                                disabled={actionBusy === g.key}
+                                onClick={() =>
+                                  void patchOrder(g, { status: "pending" })
+                                }
+                                className="text-xs text-[#54656f] hover:underline whitespace-nowrap disabled:opacity-50"
+                              >
+                                Mark pending
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={actionBusy === g.key}
+                              onClick={() =>
+                                void patchOrder(g, { status: "deleted" })
+                              }
+                              className="text-xs font-bold text-red-600 hover:underline whitespace-nowrap disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDetailGroup(g)}
+                              className="text-xs font-bold text-[#075E54] hover:underline whitespace-nowrap"
+                            >
+                              View detail
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -255,6 +581,8 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
         {detailGroup ? (
           <OrderDetailModal
             group={detailGroup}
+            busy={actionBusy === detailGroup.key}
+            onPatch={(body) => void patchOrder(detailGroup, body)}
             onClose={() => setDetailGroup(null)}
           />
         ) : null}
@@ -266,9 +594,17 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
 function OrderDetailModal({
   group,
   onClose,
+  onPatch,
+  busy,
 }: {
   group: OrderGroup;
   onClose: () => void;
+  onPatch: (body: {
+    status?: OrderStatus;
+    accept?: boolean;
+    cancellationAction?: "approve" | "reject";
+  }) => void;
+  busy: boolean;
 }) {
   const phone = group.customerWaId
     ? formatChatPhone(group.customerWaId)
@@ -317,7 +653,22 @@ function OrderDetailModal({
               Customer
             </p>
             <p className="font-semibold text-[#111b21]">{name}</p>
-            <p className="font-mono text-[#54656f] text-xs mt-0.5">{phone}</p>
+            {group.customerWaId ? (
+              <p className="font-mono text-[#54656f] text-xs mt-0.5">
+                {phone || group.customerWaId.trim()}
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <p className="text-[10px] font-bold uppercase text-[#667781]">
+              Status
+            </p>
+            <span
+              className={`inline-block mt-0.5 px-2 py-0.5 rounded text-xs font-bold ${statusClass(group.status)}`}
+            >
+              {statusLabel(group.status)}
+            </span>
           </div>
 
           {group.deliveryNote?.trim() ? (
@@ -327,6 +678,20 @@ function OrderDetailModal({
               </p>
               <p className="text-[#111b21] whitespace-pre-wrap">
                 {group.deliveryNote.trim()}
+              </p>
+            </div>
+          ) : null}
+
+          {group.hasOrderPaymentProof || group.hasDeliveryPaymentProof ? (
+            <div>
+              <p className="text-[10px] font-bold uppercase text-[#667781]">
+                Payment proof
+              </p>
+              <p className="text-xs text-[#54656f]">
+                {group.hasOrderPaymentProof ? "Order payment screenshot saved. " : ""}
+                {group.hasDeliveryPaymentProof
+                  ? "Delivery payment screenshot saved."
+                  : ""}
               </p>
             </div>
           ) : null}
@@ -366,11 +731,63 @@ function OrderDetailModal({
           </div>
         </div>
 
-        <div className="px-4 py-3 border-t border-black/8">
+        <div className="px-4 py-3 border-t border-black/8 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {group.status === "pending" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onPatch({ accept: true })}
+                className="flex-1 min-w-[120px] py-2 rounded-lg bg-[#128C7E] text-white text-xs font-bold disabled:opacity-60"
+              >
+                Accept order
+              </button>
+            ) : null}
+            {group.status === "cancellation_requested" ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onPatch({ cancellationAction: "approve" })}
+                  className="flex-1 min-w-[120px] py-2 rounded-lg bg-red-600 text-white text-xs font-bold disabled:opacity-60"
+                >
+                  Approve cancellation
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onPatch({ cancellationAction: "reject" })}
+                  className="flex-1 min-w-[120px] py-2 rounded-lg border border-black/15 text-[#111b21] text-xs font-bold disabled:opacity-60"
+                >
+                  Reject cancellation
+                </button>
+              </>
+            ) : null}
+            {group.status === "accepted" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onPatch({ status: "dispatched" })}
+                className="flex-1 min-w-[120px] py-2 rounded-lg bg-violet-700 text-white text-xs font-bold disabled:opacity-60"
+              >
+                Mark dispatched
+              </button>
+            ) : null}
+            {group.status !== "complete" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onPatch({ status: "complete" })}
+                className="flex-1 min-w-[120px] py-2 rounded-lg bg-[#075E54] text-white text-xs font-bold disabled:opacity-60"
+              >
+                Mark complete
+              </button>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2 rounded-lg bg-[#075E54] text-white text-sm font-bold hover:bg-[#054d45]"
+            className="w-full py-2 rounded-lg border border-black/15 text-[#111b21] text-sm font-bold hover:bg-[#f0f2f5]"
           >
             Close
           </button>

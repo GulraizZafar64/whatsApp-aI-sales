@@ -1,183 +1,370 @@
+import Link from "next/link";
+import { HeroChatDemo } from "@/components/landing/HeroChatDemo";
+
+const STEPS = [
+  {
+    n: "01",
+    title: "Create your account",
+    icon: "person_add",
+    desc: "Sign up with email and password. You get your own secure dashboard — no technical setup on your phone or server.",
+    details: [
+      "One account per business",
+      "Log in from any browser",
+      "Your data stays private to your business",
+    ],
+  },
+  {
+    n: "02",
+    title: "Connect WhatsApp",
+    icon: "qr_code_2",
+    desc: "Open the dashboard and scan the QR code with your business WhatsApp — the same way you link WhatsApp Web. Your number stays on your phone; we only run the automation layer.",
+    details: [
+      "Uses your existing WhatsApp Business or personal business number",
+      "Connection status shows Live in the dashboard",
+      "Sessions reconnect automatically if the server restarts",
+    ],
+  },
+  {
+    n: "03",
+    title: "Add your products",
+    icon: "inventory_2",
+    desc: "Build your catalog: product name, price, description, stock (in stock / out of stock), and photos. The AI reads this catalog on every customer message.",
+    details: [
+      "Unlimited products on paid plans",
+      "Product images can be sent to customers in chat",
+      "Out-of-stock items are explained with alternatives",
+    ],
+  },
+  {
+    n: "04",
+    title: "AI already trained — manage your sales like this",
+    icon: "smart_toy",
+    desc: "The AI already knows how to sell on WhatsApp. You only fine-tune it in AI instruction: delivery cities, payment methods (JazzCash, bank, COD), returns, and your tone — Professional, Friendly, or Cool.",
+    details: [
+      "Pre-built sales flow — you adjust rules, not build from scratch",
+      "Custom instructions apply to every AI reply",
+      "Pro & Enterprise: full AI instruction editor",
+    ],
+  },
+  {
+    n: "05",
+    title: "Set checkout rules",
+    icon: "tune",
+    desc: "In Checkout settings, choose what the customer must send before an order is saved — for example delivery address, screenshot of delivery payment, or order payment proof.",
+    details: [
+      "You control required steps per business",
+      "AI won’t mark an order complete until requirements are met",
+      "Reduces fake or incomplete orders",
+    ],
+  },
+  {
+    n: "06",
+    title: "Turn on AI auto-reply",
+    icon: "toggle_on",
+    desc: "Flip the AI switch in the navbar or dashboard. From that moment, new WhatsApp messages get an AI reply using your catalog, instructions, and chat history.",
+    details: [
+      "Turn off anytime — you can reply manually in the inbox",
+      "AI uses the last 80 messages in that chat for context",
+      "Supports text, voice notes, and images from customers",
+    ],
+  },
+  {
+    n: "07",
+    title: "Customer chats — AI sells",
+    icon: "chat",
+    desc: "A customer asks about a product, size, or price. The AI answers instantly, sends a product photo the first time they mention it, and guides them to buy — in their language.",
+    details: [
+      "Answers FAQs from your instructions",
+      "Confirms product, quantity, and price before checkout",
+      "Handles voice notes and photos intelligently",
+    ],
+  },
+  {
+    n: "08",
+    title: "Orders land in your dashboard",
+    icon: "check_circle",
+    desc: "When checkout is complete, the order appears in Orders with customer details and line items. You accept, dispatch, and mark complete — or delete mistakes.",
+    details: [
+      "Statuses: pending → accepted → dispatched → complete",
+      "Pending orders can be updated if the customer changes their mind",
+      "After accepted, changes create a new pending order (safe workflow)",
+    ],
+  },
+  {
+    n: "09",
+    title: "You stay in control",
+    icon: "dashboard",
+    desc: "Use the inbox to read and reply manually, blacklist spam numbers, view activity stats, and monitor unread chats. You’re always the boss — AI is your assistant.",
+    details: [
+      "WhatsApp inbox with search",
+      "Blacklist unwanted numbers",
+      "Stats: chats, AI replies, unread, connection",
+    ],
+  },
+] as const;
+
+const FLOW = [
+  { who: "Customer", text: "Hi, do you have the black shirt in Large?", side: "user" as const },
+  {
+    who: "AI",
+    text: "Yes! Black Shirt — Large is in stock for $50. Want me to start your order?",
+    side: "ai" as const,
+  },
+  { who: "Customer", text: "Yes, 2 pieces please", side: "user" as const },
+  {
+    who: "AI",
+    text: "Perfect — 2× Black Shirt (Large) = $100. Please send your full delivery address.",
+    side: "ai" as const,
+  },
+  { who: "Customer", text: "House 12, Street 5, Karachi", side: "user" as const },
+  {
+    who: "AI",
+    text: "Thanks! Order received — pending confirmation. We’ll update you when it’s accepted.",
+    side: "ai" as const,
+  },
+];
+
 export default function HowItWorksPage() {
   return (
-    <main className="pt-24">
-      {/* Hero Section */}
-      <section className="max-w-[1200px] mx-auto px-gutter py-section-padding-md text-center">
-        <span className="inline-block px-4 py-1 rounded-full bg-primary-container/10 text-on-primary-container text-label-sm mb-6">Simple Integration</span>
-        <h1 className="text-display-xl text-on-surface mb-6">How It Works</h1>
-        <p className="text-headline-sm text-on-surface-variant max-w-2xl mx-auto mb-4">Start automating your WhatsApp in minutes</p>
-        <p className="text-body-lg text-outline max-w-xl mx-auto">No technical skills required. Set up once and let AI handle your customer conversations while you focus on growth.</p>
+    <main className="overflow-x-hidden">
+      {/* Hero */}
+      <section className="pt-8 sm:pt-12 pb-10 sm:pb-14 px-4 sm:px-6 lg:px-8 text-center max-w-[1200px] mx-auto">
+        <span className="inline-block px-3 py-1 rounded-full bg-primary-container/10 text-on-primary-container text-xs sm:text-label-sm font-semibold mb-4 sm:mb-6">
+          End-to-end guide
+        </span>
+        <h1 className="text-2xl sm:text-3xl md:text-display-xl font-bold text-on-background mb-4 sm:mb-6">
+          How WhatsApp AI Sales works
+        </h1>
+        <p className="text-sm sm:text-base md:text-body-lg text-secondary max-w-2xl mx-auto mb-2">
+          From sign-up to your first automated sale — here is the full journey, step by step.
+        </p>
+        <p className="text-xs sm:text-sm text-secondary max-w-xl mx-auto">
+          No coding. No new app for customers. They message you on WhatsApp like always — your
+          AI handles the conversation and logs orders in your dashboard.
+        </p>
       </section>
 
-      {/* Step-by-Step Process (Bento Grid Style) */}
-      <section className="max-w-[1200px] mx-auto px-gutter py-section-padding-md">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-          {/* Step 1 */}
-          <div className="md:col-span-7 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 shadow-sm flex flex-col md:flex-row gap-8 items-center">
-            <div className="flex-1 order-2 md:order-1">
-              <span className="text-primary/20 text-display-lg block mb-2">01</span>
-              <h3 className="text-headline-md mb-4">Connect Your WhatsApp</h3>
-              <p className="text-body-md text-on-surface-variant">Link your WhatsApp Business account securely in a few clicks. Simply scan a QR code just like WhatsApp Web.</p>
+      {/* Overview diagram */}
+      <section className="px-4 sm:px-6 lg:px-8 pb-10 sm:pb-14 max-w-[1200px] mx-auto">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[
+            { icon: "login", label: "Sign up" },
+            { icon: "qr_code_2", label: "Connect WA" },
+            { icon: "inventory_2", label: "Add products" },
+            { icon: "smart_toy", label: "Manage AI" },
+            { icon: "toggle_on", label: "AI on" },
+            { icon: "chat", label: "Customer chats" },
+            { icon: "shopping_cart", label: "Checkout" },
+            { icon: "check_circle", label: "Orders" },
+          ].map((s, i) => (
+            <div
+              key={s.label}
+              className="flex items-center gap-3 p-3 sm:p-4 rounded-xl bg-surface-container-lowest border border-gray-100"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#25D366]/15 text-[#25D366] text-sm font-bold">
+                {i + 1}
+              </span>
+              <span className="material-symbols-outlined text-primary text-[22px]">{s.icon}</span>
+              <span className="text-sm font-semibold text-on-background">{s.label}</span>
             </div>
-            <div className="w-full md:w-64 bg-surface-container rounded-lg p-6 flex flex-col items-center order-1 md:order-2 border border-outline-variant/20">
-              <div className="w-40 h-40 bg-white p-2 rounded shadow-inner mb-4 relative">
-                <img
-                  alt="QR Code"
-                  className="w-full h-full opacity-80"
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuDzYoT9B8bAGsirfSckQlvY28_JRMPC-ARMjxBNTJL1uccKOkYBH5o2NTDvZmKrBe-dHbuWNsG5_z_lJzECoUhLJU4HRybThDHrRQAbSnzfEIDxYowaXh6WfMJAH7IJHCuRFKKIx2LZr7VXn-vUyv0CLEjah7Cz9y9odBn_D8RTZmOOU8dHws_KlVaNDcaHZwTZQsayB0aVj6S_HTkdPeYld3pHxNjvjpkRf4hJvrXHX1marWFh4aEGx0dRGrM2djfJcNPh6FtH3BSa"
-                />
-                <div className="absolute inset-0 border-2 border-primary/20 animate-pulse rounded"></div>
-              </div>
-              <span className="text-label-sm text-outline">Scan to link account</span>
-            </div>
-          </div>
-          {/* Step 2 */}
-          <div className="md:col-span-5 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 shadow-sm">
-            <span className="text-primary/20 text-display-lg block mb-2">02</span>
-            <h3 className="text-headline-md mb-4">Add Your Products</h3>
-            <p className="text-body-md text-on-surface-variant mb-8">Upload products, prices, and FAQs so the AI knows your business inside out.</p>
-            <div className="space-y-3">
-              <div className="bg-white p-3 rounded-lg border border-outline-variant/20 flex items-center gap-3">
-                <span className="material-symbols-outlined text-primary">inventory_2</span>
-                <div className="flex-1 h-2 bg-surface-container rounded-full overflow-hidden">
-                  <div className="w-3/4 h-full bg-primary"></div>
-                </div>
-              </div>
-              <div className="bg-white p-3 rounded-lg border border-outline-variant/20 flex items-center gap-3 opacity-60">
-                <span className="material-symbols-outlined text-primary">payments</span>
-                <div className="flex-1 h-2 bg-surface-container rounded-full overflow-hidden">
-                  <div className="w-1/2 h-full bg-primary"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* Step 3 */}
-          <div className="md:col-span-5 bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 shadow-sm flex flex-col justify-between">
-            <div>
-              <span className="text-primary/20 text-display-lg block mb-2">03</span>
-              <h3 className="text-headline-md mb-4">AI Understands Intent</h3>
-              <p className="text-body-md text-on-surface-variant">Our AI reads and understands what your customers are asking in real time, no matter the phrasing.</p>
-            </div>
-            <div className="mt-8 flex flex-col gap-2">
-              <div className="bg-surface-container p-3 rounded-xl whatsapp-bubble-user self-end max-w-[80%] text-label-md">&quot;Do you have this in blue?&quot;</div>
-              <div className="flex gap-2 items-center">
-                <span className="material-symbols-outlined text-primary animate-bounce">psychology</span>
-                <span className="text-label-sm text-outline italic">Analyzing intent...</span>
-              </div>
-            </div>
-          </div>
-          {/* Step 4 & 5 Combined Feature */}
-          <div className="md:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 shadow-sm">
-              <span className="text-primary/20 text-display-lg block mb-2">04</span>
-              <h3 className="text-headline-md mb-4">Instant Smart Replies</h3>
-              <p className="text-body-md text-on-surface-variant">The AI replies instantly with accurate answers and guides customers to place orders.</p>
-            </div>
-            <div className="bg-surface-container-lowest border border-outline-variant/30 rounded-xl p-10 shadow-sm">
-              <span className="text-primary/20 text-display-lg block mb-2">05</span>
-              <h3 className="text-headline-md mb-4">Capture Orders</h3>
-              <p className="text-body-md text-on-surface-variant">Automatically collect customer details and manage orders without manual effort.</p>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* Example Conversation (Specialized Component) */}
-      <section className="bg-surface-container-low py-section-padding-lg">
-        <div className="max-w-[1200px] mx-auto px-gutter grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+      {/* Detailed steps */}
+      <section className="px-4 sm:px-6 lg:px-8 py-10 sm:py-14 bg-surface-container-low">
+        <div className="max-w-[1200px] mx-auto space-y-6 sm:space-y-8">
+          {STEPS.map((step) => (
+            <article
+              key={step.n}
+              className="bg-white rounded-xl sm:rounded-2xl border border-gray-100 p-5 sm:p-8 shadow-sm"
+            >
+              <div className="flex flex-col md:flex-row gap-5 sm:gap-8">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <span className="text-2xl sm:text-3xl font-bold text-[#25D366]/30">
+                      {step.n}
+                    </span>
+                    <span className="material-symbols-outlined text-primary text-[28px]">
+                      {step.icon}
+                    </span>
+                  </div>
+                  <h2 className="text-lg sm:text-xl md:text-headline-sm font-semibold text-on-background mb-2 sm:mb-3">
+                    {step.title}
+                  </h2>
+                  <p className="text-sm sm:text-base text-secondary leading-relaxed mb-4 sm:mb-5">
+                    {step.desc}
+                  </p>
+                  <ul className="space-y-2">
+                    {step.details.map((d) => (
+                      <li
+                        key={d}
+                        className="flex items-center gap-2 text-xs sm:text-sm text-on-surface-variant"
+                      >
+                        <span className="material-symbols-outlined text-primary text-[18px] shrink-0 mt-0.5">
+                          check_circle
+                        </span>
+                        {d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Example conversation */}
+      <section className="px-4 sm:px-6 lg:px-8 py-10 sm:py-14 max-w-[1200px] mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 sm:gap-12 items-start">
           <div>
-            <h2 className="text-display-lg mb-6">See It In Action</h2>
-            <p className="text-body-lg text-on-surface-variant mb-10">Experience the seamless flow of an AI-driven sales conversation. It&apos;s like having your best salesperson working 24/7.</p>
-            <div className="space-y-6">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
-                  <span className="material-symbols-outlined">bolt</span>
+            <h2 className="text-xl sm:text-2xl md:text-display-lg font-bold text-on-background mb-4 sm:mb-6">
+              Example: one sale from start to finish
+            </h2>
+            <p className="text-sm sm:text-base text-secondary mb-6 sm:mb-8 leading-relaxed">
+              This is what happens behind the scenes. The customer only sees WhatsApp — you see
+              the order in your dashboard when checkout rules are satisfied.
+            </p>
+            <div className="space-y-4 sm:space-y-5">
+              {[
+                {
+                  icon: "schedule",
+                  title: "Seconds, not hours",
+                  text: "AI replies while you are busy or asleep.",
+                },
+                {
+                  icon: "history",
+                  title: "Remembers the chat",
+                  text: "Uses recent messages so it doesn’t ask the same question twice.",
+                },
+                {
+                  icon: "verified",
+                  title: "Real orders only",
+                  text: "Orders save only after your checkout settings are met.",
+                },
+              ].map((item) => (
+                <div key={item.title} className="flex items-start gap-3 sm:gap-4">
+                  <div className="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-primary">{item.icon}</span>
+                  </div>
+                  <div>
+                    <h4 className="text-base font-semibold text-on-background mb-1">
+                      {item.title}
+                    </h4>
+                    <p className="text-sm text-secondary">{item.text}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-headline-sm mb-1">24/7 Response</h4>
-                  <p className="text-on-surface-variant">Never let a lead go cold, even while you sleep.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
-                  <span className="material-symbols-outlined">trending_up</span>
-                </div>
-                <div>
-                  <h4 className="text-headline-sm mb-1">Higher Conversion</h4>
-                  <p className="text-on-surface-variant">Prompt replies lead to faster purchase decisions.</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
-          <div className="bg-white rounded-3xl shadow-sm overflow-hidden border border-outline-variant/20">
-            {/* WhatsApp Header */}
-            <div className="bg-[#075E54] p-4 flex items-center justify-between text-white">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <span className="material-symbols-outlined">person</span>
-                </div>
-                <div>
-                  <p className="font-semibold text-label-md">Customer Support</p>
-                  <p className="text-[10px] opacity-80">Online</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <span className="material-symbols-outlined">videocam</span>
-                <span className="material-symbols-outlined">call</span>
-              </div>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="bg-[#075E54] px-4 py-3 text-white text-sm font-semibold">
+              Live chat example
             </div>
-            {/* Chat Area */}
-            <div className="p-6 space-y-4 bg-[#E5DDD5] h-[400px] flex flex-col">
-              <div className="bg-white p-3 whatsapp-bubble-user self-start max-w-[85%] text-body-md shadow-sm">
-                Do you have black shoes?
-                <span className="block text-[10px] text-outline text-right mt-1">10:42 AM</span>
-              </div>
-              <div className="bg-[#DCF8C6] p-3 whatsapp-bubble-ai self-end max-w-[85%] text-body-md shadow-sm">
-                Yes 👍 Black Running Shoes are available for $50. Want to order?
-                <span className="block text-[10px] text-outline text-right mt-1">10:42 AM</span>
-              </div>
-              <div className="bg-white p-3 whatsapp-bubble-user self-start max-w-[85%] text-body-md shadow-sm">
-                Yes, I want them.
-                <span className="block text-[10px] text-outline text-right mt-1">10:43 AM</span>
-              </div>
-              <div className="bg-[#DCF8C6] p-3 whatsapp-bubble-ai self-end max-w-[85%] text-body-md shadow-sm">
-                Great! Please provide your delivery address and name to complete the order.
-                <span className="block text-[10px] text-outline text-right mt-1">10:43 AM</span>
-              </div>
+            <div className="p-4 sm:p-5 space-y-3 bg-[#e5ddd5] min-h-[320px]">
+              {FLOW.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`max-w-[90%] p-3 rounded-lg text-xs sm:text-sm shadow-sm ${
+                    msg.side === "user"
+                      ? "bg-white text-on-surface self-start ml-0 mr-auto"
+                      : "bg-[#dcf8c6] text-on-surface self-end ml-auto mr-0"
+                  }`}
+                >
+                  <span className="block text-[10px] font-semibold text-[#6b7280] mb-1">
+                    {msg.who}
+                  </span>
+                  {msg.text}
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-xs text-secondary flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[18px]">
+                check_circle
+              </span>
+              Order appears in dashboard → you accept & dispatch
             </div>
           </div>
         </div>
       </section>
 
-      {/* Trust Section */}
-      <section className="max-w-[1200px] mx-auto px-gutter py-section-padding-md text-center">
-        <h2 className="text-label-sm font-medium text-outline uppercase tracking-widest mb-10">Built for real businesses</h2>
-        <div className="flex flex-wrap justify-center items-center gap-12 opacity-40 grayscale">
-          <div className="flex items-center gap-2 font-bold text-headline-sm">
-            <span className="material-symbols-outlined">shopping_bag</span> RETAILPRO
+      {/* Demo + FAQ */}
+      <section className="bg-surface-container-low px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+        <div className="max-w-[1200px] mx-auto grid md:grid-cols-2 gap-8 items-center">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-on-background mb-4">
+              Watch the AI demo
+            </h2>
+            <p className="text-sm sm:text-base text-secondary mb-6">
+              See how fast the assistant answers product questions and moves the customer toward
+              a purchase.
+            </p>
+            <Link
+              href="/demo"
+              className="inline-flex items-center gap-2 text-primary font-semibold text-sm hover:underline"
+            >
+              Open full demo page
+              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+            </Link>
           </div>
-          <div className="flex items-center gap-2 font-bold text-headline-sm">
-            <span className="material-symbols-outlined">restaurant</span> EATWELL
-          </div>
-          <div className="flex items-center gap-2 font-bold text-headline-sm">
-            <span className="material-symbols-outlined">fitness_center</span> GYMHUB
-          </div>
-          <div className="flex items-center gap-2 font-bold text-headline-sm">
-            <span className="material-symbols-outlined">local_shipping</span> LOGISTIX
-          </div>
+          <HeroChatDemo />
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="max-w-[1200px] mx-auto px-gutter mb-section-padding-lg">
-        <div className="bg-primary p-12 md:p-20 rounded-[2rem] text-center text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 w-96 h-96 bg-primary-container/20 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/2 w-96 h-96 bg-primary-fixed-dim/10 rounded-full blur-3xl"></div>
-          <div className="relative z-10">
-            <h2 className="text-display-lg mb-4">Start Automating Your WhatsApp Today</h2>
-            <p className="text-body-lg mb-10 text-white/80">Set up in minutes and never miss a sale again</p>
-            <button className="bg-white text-primary px-10 py-4 rounded-xl font-bold text-body-lg hover:shadow-xl transition-all active:scale-95 duration-200">Get Started</button>
-            <p className="mt-6 text-label-sm text-white/60">No credit card required • 14-day free trial</p>
+      <section className="px-4 sm:px-6 lg:px-8 py-10 sm:pb-14 max-w-[800px] mx-auto">
+        <h2 className="text-xl sm:text-2xl font-bold text-center text-on-background mb-8 sm:mb-10">
+          Common questions
+        </h2>
+        <div className="space-y-6 sm:space-y-8">
+          {[
+            {
+              q: "Do customers need to install anything?",
+              a: "No. They use normal WhatsApp and message your business number.",
+            },
+            {
+              q: "Can I reply myself?",
+              a: "Yes. Use the inbox anytime. Turn AI off if you want full manual control.",
+            },
+            {
+              q: "What if the AI is wrong?",
+              a: "Update products, stock, and AI instructions — the next reply uses the new data. You can also take over the chat manually.",
+            },
+            {
+              q: "How long does setup take?",
+              a: "Most businesses connect WhatsApp and add a few products in under 30 minutes.",
+            },
+          ].map((faq) => (
+            <div key={faq.q} className="border-b border-gray-100 pb-5 sm:pb-6">
+              <h3 className="text-base font-semibold text-on-background mb-2">{faq.q}</h3>
+              <p className="text-sm text-secondary">{faq.a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="px-4 sm:px-6 lg:px-8 pb-12 sm:pb-16 max-w-[1200px] mx-auto">
+        <div className="bg-[#25D366] rounded-2xl sm:rounded-[2rem] p-8 sm:p-12 md:p-16 text-center text-white relative overflow-hidden">
+          <h2 className="text-xl sm:text-2xl md:text-display-lg font-bold mb-3 sm:mb-4 relative z-10">
+            Start automating your WhatsApp today
+          </h2>
+          <p className="text-sm sm:text-base text-white/90 mb-6 sm:mb-8 max-w-lg mx-auto relative z-10">
+            Follow the steps above — sign up, connect, add products, and turn AI on.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center relative z-10">
+            <Link
+              href="/sign-up"
+              className="inline-flex justify-center bg-white text-[#25D366] px-8 py-3 sm:py-4 rounded-xl font-bold text-sm sm:text-base hover:shadow-lg transition-all"
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/features"
+              className="inline-flex justify-center border border-white/40 text-white px-8 py-3 sm:py-4 rounded-xl font-semibold text-sm sm:text-base hover:bg-white/10 transition-all"
+            >
+              View all features
+            </Link>
           </div>
         </div>
       </section>

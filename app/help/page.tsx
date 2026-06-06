@@ -1,8 +1,14 @@
+import {
+  DemoPageLink,
+  ExpertWhatsappLink,
+  SupportWhatsappLink,
+} from "@/components/marketing/MarketingCta";
+
 export default function HelpPage() {
   return (
     <main>
       {/* Hero Section */}
-      <section className="pt-32 pb-16 px-6">
+      <section className="pt-12 pb-16 px-6">
         <div className="max-w-4xl mx-auto text-center">
           <h1 className="text-display-lg text-on-background mb-4">How can we help you?</h1>
           <p className="text-body-lg text-secondary mb-10">Find answers or contact our support team</p>
@@ -73,9 +79,10 @@ export default function HelpPage() {
             </div>
             <div className="relative z-10">
               <p className="text-white text-headline-sm">Need a custom demo for enterprise?</p>
-              <a className="inline-flex items-center text-white mt-4 font-medium hover:underline" href="/demo">
-                Book a call <span className="material-symbols-outlined ml-1">arrow_forward</span>
-              </a>
+              <ExpertWhatsappLink className="inline-flex items-center text-white mt-4 font-medium hover:underline">
+                Talk to an expert{" "}
+                <span className="material-symbols-outlined ml-1">arrow_forward</span>
+              </ExpertWhatsappLink>
             </div>
           </div>
         </div>
@@ -151,14 +158,14 @@ export default function HelpPage() {
           <h2 className="text-headline-md text-on-background mb-4">Still need help?</h2>
           <p className="text-body-lg text-secondary mb-10">Our team is here to assist you with any questions or custom requirements.</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button className="bg-primary-container text-on-primary-container px-8 py-4 rounded-xl font-medium shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2">
+            <SupportWhatsappLink className="bg-primary-container text-on-primary-container px-8 py-4 rounded-xl font-medium shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-2">
               <span className="material-symbols-outlined text-xl">chat_bubble</span>
               Contact Support
-            </button>
-            <button className="bg-white border border-gray-200 text-on-surface px-8 py-4 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
-              <span className="material-symbols-outlined text-xl">mail</span>
-              Send Email
-            </button>
+            </SupportWhatsappLink>
+            <DemoPageLink className="bg-white border border-gray-200 text-on-surface px-8 py-4 rounded-xl font-medium hover:bg-gray-50 transition-all flex items-center justify-center gap-2">
+              <span className="material-symbols-outlined text-xl">play_circle</span>
+              View demo
+            </DemoPageLink>
           </div>
         </div>
       </section>

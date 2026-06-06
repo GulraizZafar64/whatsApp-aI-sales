@@ -1,6 +1,7 @@
 import { ensureDb } from "@/lib/sequelize";
 import type { Product } from "@/lib/models";
 import { Product as ProductModel } from "@/lib/models";
+import { normalizeCurrency } from "@/lib/currency";
 import {
   bargainFloorPrice,
   customerUnitPrice,
@@ -26,6 +27,7 @@ export type AiCatalogProductJson = {
 
 export type AiCatalogPayload = {
   refreshedAt: string;
+  currency: string;
   productCount: number;
   products: AiCatalogProductJson[];
 };
@@ -51,9 +53,13 @@ export async function fetchBusinessProductsForAi(
   });
 }
 
-export function buildAiCatalogPayload(products: Product[]): AiCatalogPayload {
+export function buildAiCatalogPayload(
+  products: Product[],
+  currency = "PKR"
+): AiCatalogPayload {
   return {
     refreshedAt: new Date().toISOString(),
+    currency: normalizeCurrency(currency),
     productCount: products.length,
     products: products.map((p) => {
       const colors = parseStringArray(p.colorsJson);
@@ -85,6 +91,9 @@ export function buildAiCatalogPayload(products: Product[]): AiCatalogPayload {
 }
 
 /** Minified JSON string for the system prompt. */
-export function catalogJsonForAiPrompt(products: Product[]): string {
-  return JSON.stringify(buildAiCatalogPayload(products));
+export function catalogJsonForAiPrompt(
+  products: Product[],
+  currency?: string | null
+): string {
+  return JSON.stringify(buildAiCatalogPayload(products, currency ?? undefined));
 }

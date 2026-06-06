@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AppLogo } from "@/components/brand/AppLogo";
+import { WhatsAppButton } from "@/components/marketing/WhatsAppButton";
 import {
   APP_NAME,
   APP_TAGLINE,
   LEGAL_LAST_UPDATED,
-  PRIVACY_EMAIL,
-  SUPPORT_EMAIL,
+  LEGAL_WHATSAPP_PRIVACY,
+  LEGAL_WHATSAPP_SUPPORT,
 } from "@/lib/legal-site";
 
 export type LegalSection = {
@@ -28,6 +30,7 @@ export function LegalPageShell({ title, badge, intro, sections, sibling }: Props
       {/* Hero */}
       <section className="pt-28 pb-12 px-6 md:px-8 border-b border-outline-variant/40 bg-gradient-to-b from-primary-container/10 to-surface">
         <div className="max-w-5xl mx-auto">
+          <AppLogo href="/" size="md" className="mb-6" />
           <span className="inline-flex items-center gap-2 py-1 px-3 rounded-full bg-primary-container/15 text-on-primary-container text-label-sm border border-primary-container/25 mb-6">
             <span className="material-symbols-outlined text-[16px]">gavel</span>
             {badge}
@@ -76,13 +79,13 @@ export function LegalPageShell({ title, badge, intro, sections, sibling }: Props
                 ))}
               </ol>
               <div className="mt-6 pt-6 border-t border-outline-variant/40">
-                <p className="text-label-sm text-secondary mb-2">Questions?</p>
-                <a
-                  href={`mailto:${PRIVACY_EMAIL}`}
-                  className="text-body-sm text-primary font-medium hover:underline break-all"
+                <p className="text-label-sm text-secondary mb-3">Questions?</p>
+                <WhatsAppButton
+                  href={LEGAL_WHATSAPP_PRIVACY}
+                  className="w-full text-xs py-2.5"
                 >
-                  {PRIVACY_EMAIL}
-                </a>
+                  WhatsApp us
+                </WhatsAppButton>
               </div>
             </nav>
           </aside>
@@ -120,19 +123,19 @@ export function LegalPageShell({ title, badge, intro, sections, sibling }: Props
                   data requests or compliance questions.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3 shrink-0">
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3 shrink-0 w-full sm:w-auto">
                 <Link
                   href="/contact-us"
                   className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white text-[#075E54] font-bold text-label-md hover:bg-white/90 transition-colors"
                 >
-                  Contact support
+                  Contact page
                 </Link>
-                <a
-                  href={`mailto:${SUPPORT_EMAIL}`}
-                  className="inline-flex items-center justify-center px-6 py-3 rounded-xl border border-white/40 text-white font-bold text-label-md hover:bg-white/10 transition-colors"
+                <WhatsAppButton
+                  href={LEGAL_WHATSAPP_SUPPORT}
+                  className="bg-[#25D366] hover:bg-[#20bd5a] text-white border-0"
                 >
-                  {SUPPORT_EMAIL}
-                </a>
+                  Chat on WhatsApp
+                </WhatsAppButton>
               </div>
             </div>
           </article>

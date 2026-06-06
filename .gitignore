@@ -13,6 +13,10 @@
 # production
 /build
 
+# WhatsApp Web.js session data
+.wwebjs_auth/
+.wwebjs_cache/
+
 # misc
 .DS_Store
 *.pem

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import { AppChrome } from "@/components/AppChrome";
 import { Toaster } from "react-hot-toast";
+import { APP_LOGO_PATH } from "@/lib/brand";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -11,8 +11,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "WhatsApp AI Sales Assistant - Automate Your Conversions",
-  description: "Automatically engage, nurture, and close deals through WhatsApp. Our AI understands customer intent and handles inquiries while you sleep.",
+  title: "AI Sales Automation — WhatsApp Replies 24/7",
+  description:
+    "Automatically engage, nurture, and close deals through WhatsApp. Our AI understands customer intent and handles inquiries while you sleep.",
+  icons: {
+    icon: APP_LOGO_PATH,
+    apple: APP_LOGO_PATH,
+  },
 };
 
 export default function RootLayout({
@@ -28,11 +33,9 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans antialiased">
+      <body className="font-sans antialiased" suppressHydrationWarning>
         <Toaster position="top-center" />
-        <Navbar />
-        <main>{children}</main>
-        <Footer />
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );

@@ -14,7 +14,7 @@ import {
   formatMoney,
 } from "@/lib/product-pricing";
 import { normalizeReplyTone, type ReplyTone } from "@/lib/reply-tone";
-import { requireWhatsAppAccessTokenForBusiness } from "@/lib/whatsapp-credentials";
+import { businessWhatsAppReady } from "@/lib/whatsapp-credentials";
 import {
   primaryProductIdFromThread,
   findProductIdsMentionedInText,
@@ -25,7 +25,6 @@ import {
   sendWhatsAppTextMessage,
 } from "@/lib/whatsapp-send";
 
-/** Minutes to wait after AI replies before a bargain follow-up (default 30). */
 export function followUpDelayMs(): number {
   const raw = process.env.WHATSAPP_FOLLOW_UP_MINUTES?.trim();
   const mins = raw ? Number.parseFloat(raw) : 30;
@@ -85,7 +84,6 @@ export async function cancelPendingFollowUps(params: {
 
 export async function scheduleFollowUpAfterAiReply(params: {
   businessId: number;
-  businessPhoneNumberId: string;
   customerWaId: string;
   contactRawWaId: string;
   history: ConversationTurn[];
@@ -121,7 +119,7 @@ export async function scheduleFollowUpAfterAiReply(params: {
   ];
   const lastIn = await WhatsAppMessage.findOne({
     where: {
-      businessPhoneNumberId: params.businessPhoneNumberId,
+      businessId: params.businessId,
       senderWaId: { [Op.in]: waIds },
       direction: "incoming",
     },
@@ -132,7 +130,6 @@ export async function scheduleFollowUpAfterAiReply(params: {
   const scheduledAt = new Date(Date.now() + followUpDelayMs());
   await WhatsAppFollowUp.create({
     businessId: params.businessId,
-    businessPhoneNumberId: params.businessPhoneNumberId,
     customerWaId: params.customerWaId,
     contactRawWaId: params.contactRawWaId,
     productId: product.id,
@@ -147,7 +144,7 @@ export async function scheduleFollowUpAfterAiReply(params: {
 }
 
 async function customerRepliedSinceSchedule(params: {
-  businessPhoneNumberId: string;
+  businessId: number;
   customerWaId: string;
   contactRawWaId: string;
   lastIncomingMessageId: number;
@@ -159,7 +156,7 @@ async function customerRepliedSinceSchedule(params: {
   ];
   const newer = await WhatsAppMessage.findOne({
     where: {
-      businessPhoneNumberId: params.businessPhoneNumberId,
+      businessId: params.businessId,
       senderWaId: { [Op.in]: waIds },
       direction: "incoming",
       id: { [Op.gt]: params.lastIncomingMessageId },
@@ -202,17 +199,8 @@ export async function processDueFollowUps(): Promise<number> {
   let sent = 0;
   for (const job of due) {
     const business = await Business.findByPk(job.businessId);
-    if (!business) {
+    if (!business || !businessWhatsAppReady(business)) {
       await job.update({ status: "cancelled" });
-      continue;
-    }
-
-    const waToken = requireWhatsAppAccessTokenForBusiness(business);
-    if (!waToken) {
-      console.warn(
-        "[whatsapp-follow-up] no whatsappToken for business",
-        business.id
-      );
       continue;
     }
 
@@ -240,7 +228,7 @@ export async function processDueFollowUps(): Promise<number> {
 
     if (
       await customerRepliedSinceSchedule({
-        businessPhoneNumberId: job.businessPhoneNumberId,
+        businessId: job.businessId,
         customerWaId: job.customerWaId,
         contactRawWaId: job.contactRawWaId,
         lastIncomingMessageId: job.lastIncomingMessageId,
@@ -263,8 +251,7 @@ export async function processDueFollowUps(): Promise<number> {
     });
 
     const result = await sendWhatsAppTextMessage({
-      phoneNumberId: job.businessPhoneNumberId,
-      accessToken: waToken,
+      businessId: job.businessId,
       toWaId: job.contactRawWaId,
       body,
     });
@@ -275,10 +262,9 @@ export async function processDueFollowUps(): Promise<number> {
     }
 
     await saveOutgoingWhatsAppMessage({
-      businessPhoneNumberId: job.businessPhoneNumberId,
+      businessId: job.businessId,
       contactWaId: job.customerWaId,
       text: body,
-      messageType: "text",
       outgoingSource: "ai",
     });
 

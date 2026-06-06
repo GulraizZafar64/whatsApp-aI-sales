@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wallet Transfer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0d0d1a;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+
+        let W, H, cx, cy, scale;
+        let t = 0;
+        let phase = 'open'; // open -> eject -> fly -> receive -> close -> pause -> reset
+        let phaseT = 0;
+
+        // dollars flying
+        const DOLLAR_COUNT = 5;
+        let dollars = [];
+
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+            cx = W / 2;
+            cy = H / 2;
+            scale = Math.min(W, H) / 520;
+            initDollars();
+        }
+
+        function initDollars() {
+            dollars = [];
+            for (let i = 0; i < DOLLAR_COUNT; i++) {
+                dollars.push({
+                    progress: 0,
+                    delay: i * 0.12,
+                    active: false,
+                    inRight: false,
+                    wobble: (Math.random() - 0.5) * 0.6,
+                    yOffset: (Math.random() - 0.5) * 30 * scale,
+                });
+            }
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ── EASING
+        function easeInOut(x) {
+            return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+        }
+        function easeOut(x) { return 1 - Math.pow(1 - x, 3); }
+        function easeIn(x) { return x * x * x; }
+
+        // ── DRAW REALISTIC LEATHER WALLET
+        function drawWallet(x, y, openAmt, label, flapColor, bodyColor, accent, dollarsInside) {
+            ctx.save();
+            ctx.translate(x, y);
+
+            const s = scale;
+            const W2 = 90 * s, H2 = 58 * s;
+            const flapH = 46 * s;
+            const cornerR = 10 * s;
+
+            // shadow
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,0,0,0.55)';
+            ctx.shadowBlur = 28 * s;
+            ctx.shadowOffsetY = 8 * s;
+            ctx.fillStyle = bodyColor;
+            roundRect(ctx, -W2 / 2, -H2 / 2, W2, H2, cornerR);
+            ctx.fill();
+            ctx.restore();
+
+            // wallet body
+            const bodyGrad = ctx.createLinearGradient(-W2 / 2, -H2 / 2, W2 / 2, H2 / 2);
+            bodyGrad.addColorStop(0, lighten(bodyColor, 25));
+            bodyGrad.addColorStop(0.4, bodyColor);
+            bodyGrad.addColorStop(1, darken(bodyColor, 20));
+            ctx.fillStyle = bodyGrad;
+            roundRect(ctx, -W2 / 2, -H2 / 2, W2, H2, cornerR);
+            ctx.fill();
+
+            // stitching on body
+            ctx.strokeStyle = accent + '55';
+            ctx.lineWidth = 1 * s;
+            ctx.setLineDash([3 * s, 3 * s]);
+            roundRect(ctx, -W2 / 2 + 5 * s, -H2 / 2 + 5 * s, W2 - 10 * s, H2 - 10 * s, cornerR - 3 * s);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // card slots visible inside
+            if (openAmt > 0.1) {
+                const cardH = 10 * s;
+                const cardW = W2 * 0.65;
+                const slotColors = ['#e8c84a', '#4a9de8', '#e84a6a'];
+                for (let i = 0; i < 3; i++) {
+                    const slotY = -H2 / 2 + 8 * s + i * (cardH + 2 * s);
+                    const alpha = Math.min(1, openAmt * 2.5);
+                    ctx.globalAlpha = alpha * 0.85;
+                    ctx.fillStyle = slotColors[i];
+                    roundRect(ctx, -cardW / 2 + 10 * s, slotY, cardW, cardH, 3 * s);
+                    ctx.fill();
+                    // card shine
+                    ctx.fillStyle = '#ffffff33';
+                    roundRect(ctx, -cardW / 2 + 10 * s, slotY, cardW, cardH * 0.4, 3 * s);
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // dollar bills peeking out when opening
+            if (dollarsInside > 0 && openAmt > 0.05) {
+                const peek = Math.min(1, openAmt * 3) * dollarsInside;
+                for (let i = 0; i < 3; i++) {
+                    const bW = 36 * s, bH = 16 * s;
+                    const bX = -W2 / 2 + 8 * s + i * 4 * s;
+                    const bY = -H2 / 2 + (1 - Math.min(1, openAmt * 2)) * 10 * s;
+                    ctx.fillStyle = i === 0 ? '#4a9e6a' : i === 1 ? '#3d8a5c' : '#2d7048';
+                    ctx.globalAlpha = Math.min(1, openAmt * 4) * 0.9;
+                    roundRect(ctx, bX, bY, bW, bH, 2 * s);
+                    ctx.fill();
+                    // $ symbol
+                    ctx.globalAlpha = Math.min(1, openAmt * 4) * 0.6;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = `bold ${8 * s}px Georgia, serif`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText('$', bX + bW / 2, bY + bH * 0.7);
+                }
+                ctx.globalAlpha = 1;
+            }
+
+            // ── FLAP (opens upward via rotation)
+            ctx.save();
+            // pivot at bottom of flap
+            const pivotY = -H2 / 2 + flapH;
+            ctx.translate(0, pivotY);
+            ctx.rotate(-openAmt * Math.PI * 0.72); // flap opens ~130deg
+            ctx.translate(0, -pivotY);
+
+            // flap body
+            const flapGrad = ctx.createLinearGradient(-W2 / 2, -H2 / 2, W2 / 2, pivotY);
+            flapGrad.addColorStop(0, lighten(flapColor, 30));
+            flapGrad.addColorStop(0.5, flapColor);
+            flapGrad.addColorStop(1, darken(flapColor, 15));
+            ctx.fillStyle = flapGrad;
+            ctx.beginPath();
+            ctx.moveTo(-W2 / 2 + cornerR, -H2 / 2);
+            ctx.arcTo(W2 / 2, -H2 / 2, W2 / 2, -H2 / 2 + cornerR, cornerR);
+            ctx.lineTo(W2 / 2, pivotY);
+            ctx.lineTo(-W2 / 2, pivotY);
+            ctx.arcTo(-W2 / 2, -H2 / 2, -W2 / 2 + cornerR, -H2 / 2, cornerR);
+            ctx.closePath();
+            ctx.fill();
+
+            // flap stitching
+            ctx.strokeStyle = accent + '44';
+            ctx.lineWidth = 1 * s;
+            ctx.setLineDash([3 * s, 3 * s]);
+            ctx.beginPath();
+            ctx.moveTo(-W2 / 2 + 5 * s, -H2 / 2 + 5 * s);
+            ctx.lineTo(W2 / 2 - 5 * s, -H2 / 2 + 5 * s);
+            ctx.lineTo(W2 / 2 - 5 * s, pivotY - 3 * s);
+            ctx.lineTo(-W2 / 2 + 5 * s, pivotY - 3 * s);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // flap snap/button
+            ctx.fillStyle = accent;
+            ctx.beginPath();
+            ctx.arc(0, pivotY - 8 * s, 5 * s, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = lighten(accent, 40);
+            ctx.beginPath();
+            ctx.arc(-1 * s, pivotY - 9 * s, 2 * s, 0, Math.PI * 2);
+            ctx.fill();
+
+            // logo emboss on flap
+            ctx.globalAlpha = 0.18;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5 * s;
+            ctx.beginPath();
+            ctx.arc(0, -H2 / 2 + 18 * s, 8 * s, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            ctx.restore();
+
+            // label
+            ctx.fillStyle = '#ffffff99';
+            ctx.font = `${11 * s}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText(label, 0, H2 / 2 + 18 * s);
+
+            ctx.restore();
+        }
+
+        // ── DRAW FLYING DOLLAR BILL
+        function drawDollar(x, y, rot, scaleX) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rot);
+            ctx.scale(scaleX, 1); // flip for perspective
+
+            const s = scale;
+            const dW = 52 * s, dH = 22 * s;
+
+            // outer
+            const grad = ctx.createLinearGradient(-dW / 2, -dH / 2, dW / 2, dH / 2);
+            grad.addColorStop(0, '#5abf7e');
+            grad.addColorStop(0.4, '#3d9e63');
+            grad.addColorStop(1, '#2a7a4a');
+            ctx.fillStyle = grad;
+            roundRect(ctx, -dW / 2, -dH / 2, dW, dH, 3 * s);
+            ctx.fill();
+
+            // border
+            ctx.strokeStyle = '#1a5c33';
+            ctx.lineWidth = 1 * s;
+            roundRect(ctx, -dW / 2 + 3 * s, -dH / 2 + 3 * s, dW - 6 * s, dH - 6 * s, 2 * s);
+            ctx.stroke();
+
+            // $ center
+            ctx.fillStyle = '#1a5c33';
+            ctx.font = `bold ${13 * s}px Georgia, serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('$', 0, 5 * s);
+
+            // serial numbers
+            ctx.font = `${5 * s}px monospace`;
+            ctx.fillStyle = '#1a5c3388';
+            ctx.textAlign = 'left';
+            ctx.fillText('A00847291B', -dW / 2 + 5 * s, -dH / 2 + 9 * s);
+            ctx.textAlign = 'right';
+            ctx.fillText('100', dW / 2 - 5 * s, dH / 2 - 4 * s);
+
+            // shine
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            roundRect(ctx, -dW / 2, -dH / 2, dW, dH * 0.45, 3 * s);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // ── PARTICLE SPARKLES
+        let sparkles = [];
+        function spawnSparkles(x, y) {
+            for (let i = 0; i < 12; i++) {
+                const angle = (Math.PI * 2 / 12) * i + Math.random() * 0.3;
+                const speed = (2 + Math.random() * 3) * scale;
+                sparkles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1,
+                    size: (2 + Math.random() * 3) * scale,
+                    color: ['#f5d76e', '#f5a623', '#ffffff', '#5abf7e'][Math.floor(Math.random() * 4)]
+                });
+            }
+        }
+        function updateSparkles() {
+            sparkles = sparkles.filter(s => s.life > 0);
+            for (const s of sparkles) {
+                s.x += s.vx;
+                s.y += s.vy;
+                s.vy += 0.1 * scale;
+                s.life -= 0.025;
+                ctx.globalAlpha = s.life;
+                ctx.fillStyle = s.color;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // ── POSITIONS
+        function getPositions() {
+            const gap = Math.min(W * 0.28, 160 * scale);
+            return {
+                lx: cx - gap,
+                rx: cx + gap,
+                wy: cy - 10 * scale
+            };
+        }
+
+        // ── BACKGROUND
+        function drawBackground() {
+            // deep dark bg
+            const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
+            bg.addColorStop(0, '#1a1a35');
+            bg.addColorStop(1, '#0a0a18');
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, W, H);
+
+            // subtle grid lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.lineWidth = 1;
+            const gridSize = 40 * scale;
+            for (let gx = 0; gx < W; gx += gridSize) {
+                ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+            }
+            for (let gy = 0; gy < H; gy += gridSize) {
+                ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+            }
+
+            // glow spots under wallets
+            const pos = getPositions();
+            for (const wx of [pos.lx, pos.rx]) {
+                const g = ctx.createRadialGradient(wx, pos.wy, 0, wx, pos.wy, 120 * scale);
+                g.addColorStop(0, 'rgba(90,191,126,0.08)');
+                g.addColorStop(1, 'rgba(90,191,126,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, W, H);
+            }
+        }
+
+        // ── TITLE
+        function drawTitle() {
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.font = `${Math.max(14, 16 * scale)}px system-ui, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.fillText('Money Transfer', cx, cy - 120 * scale);
+
+            // arrow between wallets
+            const pos = getPositions();
+            const arrowAlpha = phase === 'fly' ? 0.9 : 0.3;
+            ctx.globalAlpha = arrowAlpha;
+            ctx.strokeStyle = '#5abf7e';
+            ctx.lineWidth = 2 * scale;
+            ctx.setLineDash([6 * scale, 4 * scale]);
+            ctx.beginPath();
+            ctx.moveTo(pos.lx + 55 * scale, pos.wy);
+            ctx.lineTo(pos.rx - 55 * scale, pos.wy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // arrowhead
+            const ax = pos.rx - 55 * scale;
+            ctx.beginPath();
+            ctx.moveTo(ax, pos.wy);
+            ctx.lineTo(ax - 10 * scale, pos.wy - 6 * scale);
+            ctx.lineTo(ax - 10 * scale, pos.wy + 6 * scale);
+            ctx.closePath();
+            ctx.fillStyle = '#5abf7e';
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        // ── MAIN ANIMATION STATE
+        let leftOpen = 0;  // 0=closed 1=open
+        let rightOpen = 0;
+        let leftDollars = 1; // bills visible inside left
+        let rightDollars = 0;
+
+        let spawned = false;
+
+        function getPhaseProgress() {
+            return phaseT;
+        }
+
+        function loop() {
+            t++;
+            phaseT++;
+
+            ctx.clearRect(0, 0, W, H);
+            drawBackground();
+            drawTitle();
+
+            const pos = getPositions();
+
+            // ── PHASE MACHINE
+            const OPEN_DUR = 55;
+            const EJECT_DUR = 40;
+            const FLY_DUR = 80;
+            const RECEIVE_DUR = 40;
+            const CLOSE_DUR = 55;
+            const PAUSE_DUR = 80;
+
+            if (phase === 'open') {
+                const p = easeOut(Math.min(1, phaseT / OPEN_DUR));
+                leftOpen = p;
+                rightOpen = p * 0.3; // right opens a bit too
+                if (phaseT >= OPEN_DUR) { phase = 'eject'; phaseT = 0; spawned = false; }
+            }
+            else if (phase === 'eject') {
+                const p = easeInOut(Math.min(1, phaseT / EJECT_DUR));
+                // activate dollars one by one
+                for (let i = 0; i < DOLLAR_COUNT; i++) {
+                    if (phaseT / EJECT_DUR > dollars[i].delay / 0.6) {
+                        dollars[i].active = true;
+                        dollars[i].progress = 0;
+                    }
+                }
+                if (phaseT >= EJECT_DUR) { phase = 'fly'; phaseT = 0; }
+            }
+            else if (phase === 'fly') {
+                // move dollars from left to right
+                for (const d of dollars) {
+                    if (!d.active) continue;
+                    d.progress = Math.min(1, d.progress + 0.014 + d.delay * 0.003);
+                }
+                const allDone = dollars.every(d => d.progress >= 1);
+                if (allDone && !spawned) {
+                    spawned = true;
+                    spawnSparkles(pos.rx, pos.wy - 20 * scale);
+                }
+                if (phaseT >= FLY_DUR) { phase = 'receive'; phaseT = 0; }
+            }
+            else if (phase === 'receive') {
+                const p = easeOut(Math.min(1, phaseT / RECEIVE_DUR));
+                rightOpen = 0.3 + p * 0.7;
+                rightDollars = p;
+                leftDollars = 1 - p * 0.8;
+                if (phaseT >= RECEIVE_DUR) { phase = 'close'; phaseT = 0; }
+            }
+            else if (phase === 'close') {
+                const p = easeInOut(Math.min(1, phaseT / CLOSE_DUR));
+                leftOpen = 1 - p;
+                rightOpen = 1 - p;
+                if (phaseT >= CLOSE_DUR) { phase = 'pause'; phaseT = 0; }
+            }
+            else if (phase === 'pause') {
+                leftOpen = 0; rightOpen = 0;
+                if (phaseT >= PAUSE_DUR) {
+                    phase = 'open'; phaseT = 0;
+                    leftDollars = 1; rightDollars = 0; spawned = false;
+                    initDollars();
+                }
+            }
+
+            // ── DRAW WALLETS
+            // Left wallet (brown leather — sender)
+            drawWallet(pos.lx, pos.wy, leftOpen, 'Your Wallet', '#8B5E3C', '#7A4F2D', '#d4a574', leftDollars);
+            // Right wallet (dark leather — receiver)
+            drawWallet(pos.rx, pos.wy, rightOpen, 'Receiver', '#3C3C5C', '#2d2d4a', '#7a7aaa', rightDollars);
+
+            // ── DRAW FLYING DOLLARS
+            if (phase === 'fly' || phase === 'eject' || phase === 'receive') {
+                for (let i = 0; i < dollars.length; i++) {
+                    const d = dollars[i];
+                    if (!d.active || d.progress <= 0) continue;
+
+                    const p = d.progress;
+                    // arc path
+                    const startX = pos.lx + 45 * scale;
+                    const endX = pos.rx - 45 * scale;
+                    const arcH = -80 * scale - d.yOffset;
+
+                    const dx = startX + (endX - startX) * easeInOut(p);
+                    const dy = pos.wy + arcH * Math.sin(p * Math.PI) + d.yOffset * (1 - p);
+                    const rot = d.wobble * Math.sin(p * Math.PI * 3);
+                    const scaleX = p < 0.5 ? 1 : 1 - (p - 0.5) * 0.3;
+                    const alpha = p < 0.1 ? p * 10 : p > 0.9 ? (1 - p) * 10 : 1;
+
+                    ctx.globalAlpha = alpha;
+                    drawDollar(dx, dy, rot, scaleX);
+                    ctx.globalAlpha = 1;
+                }
+            }
+
+            // ── SPARKLES
+            updateSparkles();
+
+            requestAnimationFrame(loop);
+        }
+
+        // ── HELPERS
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.arcTo(x + w, y, x + w, y + h, r);
+            ctx.arcTo(x + w, y + h, x, y + h, r);
+            ctx.arcTo(x, y + h, x, y, r);
+            ctx.arcTo(x, y, x + w, y, r);
+            ctx.closePath();
+        }
+        function lighten(hex, amt) {
+            const n = parseInt(hex.slice(1), 16);
+            const r = Math.min(255, (n >> 16) + amt);
+            const g = Math.min(255, ((n >> 8) & 0xff) + amt);
+            const b = Math.min(255, (n & 0xff) + amt);
+            return `rgb(${r},${g},${b})`;
+        }
+        function darken(hex, amt) { return lighten(hex, -amt); }
+
+        loop();
+    </script>
+</body>
+
+</html>

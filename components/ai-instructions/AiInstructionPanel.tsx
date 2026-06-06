@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useDashboard } from "@/components/dashboard/DashboardProvider";
+import { BallLoader } from "@/components/ui/BallLoader";
+import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
 import type { AiInstructionsRecord } from "@/lib/ai-instructions";
 import { DEFAULT_AI_INSTRUCTIONS } from "@/lib/ai-instructions";
 import {
@@ -40,6 +43,7 @@ const FIELDS: {
 ];
 
 export function AiInstructionPanel() {
+  const { bootstrapped, needsSetup } = useDashboard();
   const [data, setData] = useState<AiInstructionsRecord | null>(null);
   const [businessDescription, setBusinessDescription] = useState("");
   const [replyTone, setReplyTone] = useState<ReplyTone>(DEFAULT_REPLY_TONE);
@@ -47,10 +51,9 @@ export function AiInstructionPanel() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
+    if (!bootstrapped || needsSetup) {
+      setData(null);
       setLoading(false);
-      toast.error("Missing phone number ID.");
       return;
     }
     setLoading(true);
@@ -59,11 +62,13 @@ export function AiInstructionPanel() {
       const jsonAi = await resAi.json().catch(() => ({}));
 
       if (!resAi.ok) {
-        toast.error(
+        const errMsg =
           typeof jsonAi.error === "string"
             ? jsonAi.error
-            : "Could not load instructions."
-        );
+            : "Could not load instructions.";
+        if (shouldToastDashboardApiError(errMsg)) {
+          toast.error(errMsg);
+        }
         setData(null);
         return;
       }
@@ -84,7 +89,7 @@ export function AiInstructionPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bootstrapped, needsSetup]);
 
   useEffect(() => {
     void load();
@@ -167,7 +172,7 @@ export function AiInstructionPanel() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center p-12 bg-[#f0f2f5]">
-        <div className="animate-spin h-10 w-10 border-4 border-[#075E54] border-t-transparent rounded-full" />
+        <BallLoader size="lg" />
       </div>
     );
   }

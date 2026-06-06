@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useDashboard } from "@/components/dashboard/DashboardProvider";
+import { BallLoader } from "@/components/ui/BallLoader";
+import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
 import { dashboardFetch } from "@/lib/dashboard/session";
 
 type BlockedRow = {
@@ -11,16 +14,16 @@ type BlockedRow = {
 };
 
 export function BlacklistPanel() {
+  const { bootstrapped, needsSetup } = useDashboard();
   const [rows, setRows] = useState<BlockedRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
+    if (!bootstrapped || needsSetup) {
+      setRows([]);
       setLoading(false);
-      toast.error("Missing phone number ID. Sign in again after connecting WhatsApp.");
       return;
     }
     setLoading(true);
@@ -28,9 +31,11 @@ export function BlacklistPanel() {
       const res = await dashboardFetch("/api/blacklist");
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error(
-          typeof data.error === "string" ? data.error : "Could not load blacklist."
-        );
+        const errMsg =
+          typeof data.error === "string" ? data.error : "Could not load blacklist.";
+        if (shouldToastDashboardApiError(errMsg)) {
+          toast.error(errMsg);
+        }
         setRows([]);
         return;
       }
@@ -40,7 +45,7 @@ export function BlacklistPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bootstrapped, needsSetup]);
 
   useEffect(() => {
     void load();
@@ -93,7 +98,7 @@ export function BlacklistPanel() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center p-12 bg-[#f0f2f5]">
-        <div className="animate-spin h-10 w-10 border-4 border-[#075E54] border-t-transparent rounded-full" />
+        <BallLoader size="lg" />
       </div>
     );
   }

@@ -70,11 +70,32 @@
 
   /* Font Family */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* Site-wide: max 5px corner radius */
+  --radius-xs: 5px;
+  --radius-sm: 5px;
+  --radius-md: 5px;
+  --radius-lg: 5px;
+  --radius-xl: 5px;
+  --radius-2xl: 5px;
+  --radius-3xl: 5px;
+  --radius-4xl: 5px;
+  --radius-full: 5px;
 }
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-surface font-sans text-on-surface antialiased;
+    @apply bg-surface font-sans text-on-surface antialiased overflow-x-hidden;
+  }
+
+  img,
+  video {
+    max-width: 100%;
+    height: auto;
   }
 
   h1 {
@@ -149,11 +170,11 @@
 }
 
 .whatsapp-bubble-ai {
-  border-radius: 0 12px 12px 12px;
+  border-radius: 0 5px 5px 5px;
 }
 
 .whatsapp-bubble-user {
-  border-radius: 12px 0 12px 12px;
+  border-radius: 5px 0 5px 5px;
 }
 
 .whatsapp-chat-bg {
@@ -167,4 +188,179 @@
 
 .btn-inner-shadow {
   box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes chatBubbleIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-chat-bubble-in {
+  animation: chatBubbleIn 0.35s ease-out forwards;
+}
+
+/* Smooth linear ball loader — site theme greens */
+.ball-loader {
+  --ball-loader-size: 12px;
+  --ball-loader-gap: 10px;
+  --ball-loader-height: 32px;
+  --ball-loader-bounce: -22px;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--ball-loader-gap);
+  height: var(--ball-loader-height);
+  padding-bottom: 2px;
+}
+
+.ball-loader__ball {
+  width: var(--ball-loader-size);
+  height: var(--ball-loader-size);
+  border-radius: 50%;
+  transform-origin: center bottom;
+}
+
+.ball-loader__ball:nth-child(2) {
+  animation: ball-loader-drop 2.1s cubic-bezier(0.4, 0, 0.2, 1) 0s infinite;
+}
+
+.ball-loader__ball:nth-child(3) {
+  animation: ball-loader-drop 2.1s cubic-bezier(0.4, 0, 0.2, 1) 0.7s infinite;
+}
+
+.ball-loader__ball:nth-child(4) {
+  animation: ball-loader-drop 2.1s cubic-bezier(0.4, 0, 0.2, 1) 1.4s infinite;
+}
+
+.ball-loader--xs {
+  --ball-loader-size: 5px;
+  --ball-loader-gap: 4px;
+  --ball-loader-height: 14px;
+  --ball-loader-bounce: -9px;
+}
+
+.ball-loader--sm {
+  --ball-loader-size: 7px;
+  --ball-loader-gap: 6px;
+  --ball-loader-height: 20px;
+  --ball-loader-bounce: -14px;
+}
+
+.ball-loader--md {
+  --ball-loader-size: 12px;
+  --ball-loader-gap: 10px;
+  --ball-loader-height: 32px;
+  --ball-loader-bounce: -22px;
+}
+
+.ball-loader--lg {
+  --ball-loader-size: 18px;
+  --ball-loader-gap: 14px;
+  --ball-loader-height: 48px;
+  --ball-loader-bounce: -34px;
+}
+
+.ball-loader--brand .ball-loader__ball:nth-child(2) {
+  background: var(--color-primary-container, #25d366);
+}
+
+.ball-loader--brand .ball-loader__ball:nth-child(3) {
+  background: #075e54;
+}
+
+.ball-loader--brand .ball-loader__ball:nth-child(4) {
+  background: var(--color-primary, #006d2f);
+}
+
+.ball-loader--light .ball-loader__ball:nth-child(2),
+.ball-loader--light .ball-loader__ball:nth-child(3),
+.ball-loader--light .ball-loader__ball:nth-child(4) {
+  background: #ffffff;
+}
+
+.ball-loader--danger .ball-loader__ball:nth-child(2) {
+  background: #f87171;
+}
+
+.ball-loader--danger .ball-loader__ball:nth-child(3) {
+  background: #ef4444;
+}
+
+.ball-loader--danger .ball-loader__ball:nth-child(4) {
+  background: #dc2626;
+}
+
+@keyframes ball-loader-drop {
+  0% {
+    transform: translateY(0) scaleX(1) scaleY(1);
+  }
+  8% {
+    transform: translateY(0) scaleX(1.4) scaleY(0.5);
+  }
+  18% {
+    transform: translateY(var(--ball-loader-bounce)) scaleX(0.88) scaleY(1.1);
+  }
+  38% {
+    transform: translateY(var(--ball-loader-bounce)) scaleX(0.88) scaleY(1.1);
+  }
+  52% {
+    transform: translateY(0) scaleX(1.4) scaleY(0.5);
+  }
+  62% {
+    transform: translateY(calc(var(--ball-loader-bounce) * 0.2)) scaleX(0.95)
+      scaleY(1.04);
+  }
+  72% {
+    transform: translateY(0) scaleX(1.1) scaleY(0.92);
+  }
+  80% {
+    transform: translateY(calc(var(--ball-loader-bounce) * 0.067)) scaleX(1)
+      scaleY(1);
+  }
+  88% {
+    transform: translateY(0) scaleX(1) scaleY(1);
+  }
+  100% {
+    transform: translateY(0) scaleX(1) scaleY(1);
+  }
+}
+
+/* Fallback: cap legacy large radius utilities */
+@layer utilities {
+  .rounded-full,
+  .rounded-3xl,
+  .rounded-2xl {
+    border-radius: 5px;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }

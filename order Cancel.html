@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cancel Order Button</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f3f4f6;
+        }
+
+        .btn-outer {
+            position: relative;
+            width: 260px;
+            height: 72px;
+            border-radius: 36px;
+            border: none;
+            cursor: pointer;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            box-shadow: 0 6px 24px rgba(239, 68, 68, 0.4);
+            transition: transform 0.12s, box-shadow 0.12s;
+            display: block;
+        }
+
+        .btn-outer:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(239, 68, 68, 0.55);
+        }
+
+        .btn-outer:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+
+        .btn-outer:disabled {
+            cursor: default;
+        }
+
+        .label-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.4px;
+            transition: opacity 0.3s;
+        }
+
+        .x-icon {
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .stage {
+            position: absolute;
+            inset: 0;
+            display: none;
+            background: #1a1a2e;
+            overflow: hidden;
+            border-radius: 36px;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .cancel-layer {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, #dc2626, #991b1b);
+            border-radius: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+
+        .cancel-layer.show {
+            opacity: 1;
+        }
+
+        .cancel-layer span {
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .cross {
+            width: 28px;
+            height: 28px;
+        }
+
+        .cross circle {
+            fill: none;
+            stroke: #fff;
+            stroke-width: 2.5;
+            stroke-dasharray: 82;
+            stroke-dashoffset: 82;
+            transition: stroke-dashoffset 0.5s 0.1s ease;
+        }
+
+        .cross line {
+            stroke: #fff;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 20;
+            stroke-dashoffset: 20;
+        }
+
+        .cross .l1 {
+            transition: stroke-dashoffset 0.28s 0.55s ease;
+        }
+
+        .cross .l2 {
+            transition: stroke-dashoffset 0.28s 0.78s ease;
+        }
+
+        .cancel-layer.show .cross circle {
+            stroke-dashoffset: 0;
+        }
+
+        .cancel-layer.show .cross .l1 {
+            stroke-dashoffset: 0;
+        }
+
+        .cancel-layer.show .cross .l2 {
+            stroke-dashoffset: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <button class="btn-outer" id="btn" onclick="startScene()">
+        <div class="label-layer" id="lbl">
+            <div class="x-icon">✕</div>
+            Cancel Order
+        </div>
+
+        <div class="stage" id="stage">
+            <canvas id="c" width="260" height="72"></canvas>
+        </div>
+
+        <div class="cancel-layer" id="cancelOverlay">
+            <svg class="cross" viewBox="0 0 28 28">
+                <circle cx="14" cy="14" r="12" />
+                <line class="l1" x1="9" y1="9" x2="19" y2="19" />
+                <line class="l2" x1="19" y1="9" x2="9" y2="19" />
+            </svg>
+            <span>Cancelled!</span>
+        </div>
+    </button>
+
+    <script>
+        const btn = document.getElementById('btn');
+        const lbl = document.getElementById('lbl');
+        const stage = document.getElementById('stage');
+        const cancelO = document.getElementById('cancelOverlay');
+        const cv = document.getElementById('c');
+        const ctx = cv.getContext('2d');
+
+        const W = 260, H = 72;
+        const GROUND = H - 16;
+        const STORE_RIGHT = 72;
+        // man starts center-right, walks LEFT toward store
+        const MAN_START = 190;
+        const MAN_TARGET = 50;  // stop near store door
+
+        let raf, busy = false;
+        let t, manX, phase, hasBox, storeBoxCount;
+
+        function resetState() {
+            t = 0;
+            manX = MAN_START;
+            phase = 'idle';       // idle → pickup → walkback → drop → done
+            hasBox = false;
+            storeBoxCount = 2;    // store starts with 2 boxes (1 is "out" with order)
+        }
+
+        function startScene() {
+            if (busy) return;
+            busy = true;
+            btn.disabled = true;
+            lbl.style.opacity = '0';
+            setTimeout(() => {
+                lbl.style.display = 'none';
+                stage.style.display = 'block';
+                resetState();
+                loop();
+            }, 280);
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, W, H);
+            drawBg();
+            drawStore();
+            drawMan();
+            t++;
+
+            // phase logic
+            if (phase === 'idle' && t > 25) {
+                // man bends to pick up box from ground (order came back)
+                phase = 'pickup';
+            }
+            if (phase === 'pickup' && t > 52) {
+                hasBox = true;
+                phase = 'walkback';
+            }
+            if (phase === 'walkback') {
+                manX -= 1.7;
+                if (manX <= MAN_TARGET) {
+                    manX = MAN_TARGET;
+                    phase = 'drop';
+                }
+            }
+            if (phase === 'drop' && t > 105) {
+                hasBox = false;
+                storeBoxCount = 3; // box returned to store
+                phase = 'leave';
+            }
+            if (phase === 'leave') {
+                manX -= 1.2;
+                if (manX < -40) {
+                    phase = 'done';
+                    cancelAnimationFrame(raf);
+                    setTimeout(showCancelled, 150);
+                    return;
+                }
+            }
+
+            raf = requestAnimationFrame(loop);
+        }
+
+        /* ── BACKGROUND ── */
+        function drawBg() {
+            const g = ctx.createLinearGradient(0, 0, 0, H);
+            g.addColorStop(0, '#1a1a2e');
+            g.addColorStop(1, '#16213e');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, W, H);
+
+            // ground
+            ctx.fillStyle = '#2d3561';
+            ctx.fillRect(0, GROUND, W, H - GROUND);
+            ctx.fillStyle = '#3d4a7a';
+            ctx.fillRect(0, GROUND, W, 3);
+
+            // road dashes (scroll LEFT direction for walkback feel)
+            ctx.fillStyle = 'rgba(239,68,68,0.2)';
+            for (let i = 0; i < 7; i++) {
+                const dx = W - (((t * 1.4) + (i * 38)) % W);
+                ctx.fillRect(dx, GROUND + 7, 22, 3);
+            }
+
+            // draw a dropped box on the ground (where man picks it from) when idle/pickup
+            if (phase === 'idle' || phase === 'pickup') {
+                const bx = manX - 6;
+                const by = GROUND - 14;
+                // slight wobble
+                const wobble = phase === 'pickup' ? Math.min(1, (t - 25) / 27) : 0;
+                ctx.save();
+                ctx.translate(bx + 9, by + 7);
+                ctx.rotate((1 - wobble) * 0.3);
+                ctx.fillStyle = '#b45309';
+                ctx.beginPath();
+                ctx.roundRect(-9, -7, 18, 13, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 1;
+                ctx.strokeRect(-9, -7, 18, 13);
+                ctx.strokeStyle = 'rgba(252,211,77,0.5)'; ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, -7); ctx.lineTo(0, 6);
+                ctx.moveTo(-9, 0); ctx.lineTo(9, 0);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        /* ── STORE ── */
+        function drawStore() {
+            const sx = 0, sw = STORE_RIGHT;
+
+            // body
+            ctx.fillStyle = '#c2410c';
+            ctx.fillRect(sx, 8, sw, H - 8 - 16);
+
+            // roof bar
+            ctx.fillStyle = '#7c2d12';
+            ctx.fillRect(sx, 5, sw, 6);
+
+            // roof triangle
+            ctx.fillStyle = '#991b1b';
+            ctx.beginPath();
+            ctx.moveTo(sx - 2, 5);
+            ctx.lineTo(sx + sw / 2, 0);
+            ctx.lineTo(sx + sw + 2, 5);
+            ctx.fill();
+
+            // door
+            ctx.fillStyle = '#431407';
+            ctx.fillRect(28, GROUND - 22, 16, 22);
+            ctx.fillStyle = '#7c2d12';
+            ctx.fillRect(28, GROUND - 22, 16, 2);
+
+            // door knob
+            ctx.fillStyle = '#fcd34d';
+            ctx.beginPath();
+            ctx.arc(38, GROUND - 10, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // window
+            ctx.fillStyle = 'rgba(251,191,36,0.7)';
+            ctx.fillRect(8, 14, 18, 14);
+            ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 1.5;
+            ctx.strokeRect(8, 14, 18, 14);
+            ctx.beginPath();
+            ctx.moveTo(17, 14); ctx.lineTo(17, 28);
+            ctx.moveTo(8, 21); ctx.lineTo(26, 21);
+            ctx.stroke();
+
+            // STORE label
+            ctx.fillStyle = '#fef3c7';
+            ctx.font = 'bold 7px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('STORE', sw / 2, H - 20);
+
+            // stacked boxes inside store
+            for (let i = 0; i < storeBoxCount; i++) {
+                const bx = 10, by = GROUND - 10 - (i * 10), bw = 18, bh = 8;
+                ctx.fillStyle = ['#f59e0b', '#d97706', '#b45309'][i];
+                ctx.beginPath();
+                ctx.roundRect(bx, by, bw, bh, 1);
+                ctx.fill();
+                ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 0.8;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(bx + bw / 2, by); ctx.lineTo(bx + bw / 2, by + bh);
+                ctx.stroke();
+            }
+
+            // "return" arrow on door when man is walking back
+            if (phase === 'walkback' || phase === 'drop') {
+                ctx.fillStyle = '#fcd34d';
+                ctx.font = 'bold 9px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('←', sw / 2, GROUND - 26);
+            }
+        }
+
+        /* ── MAN ── */
+        function drawMan() {
+            const x = manX;
+            const walkback = (phase === 'walkback' || phase === 'leave');
+            const swing = walkback ? Math.sin(t * 0.28) * 18 : 0;
+            const bounce = walkback ? Math.abs(Math.sin(t * 0.28)) * 3 : 0;
+
+            // flip man to face LEFT (toward store) when walking back
+            const facingLeft = (phase === 'walkback' || phase === 'drop' || phase === 'leave' || phase === 'idle' || phase === 'pickup');
+
+            ctx.save();
+            ctx.translate(x, GROUND - 28 - bounce);
+            if (facingLeft) ctx.scale(-1, 1); // mirror to face left
+
+            // shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(0, 28, 10, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // box on shoulder (when carrying back)
+            if (hasBox) {
+                ctx.fillStyle = '#b45309';
+                ctx.beginPath();
+                ctx.roundRect(-9, -26, 18, 13, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 1;
+                ctx.strokeRect(-9, -26, 18, 13);
+                ctx.strokeStyle = 'rgba(252,211,77,0.5)'; ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, -26); ctx.lineTo(0, -13);
+                ctx.moveTo(-9, -20); ctx.lineTo(9, -20);
+                ctx.stroke();
+            }
+
+            ctx.lineCap = 'round';
+
+            // legs
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.beginPath();
+            ctx.moveTo(2, 14);
+            ctx.lineTo(5 + swing * 0.4, 26);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-2, 14);
+            ctx.lineTo(-5 - swing * 0.4, 26);
+            ctx.stroke();
+
+            // shoes
+            ctx.fillStyle = '#111827';
+            ctx.beginPath();
+            ctx.ellipse(5 + swing * 0.4, 26, 5, 2.5, 0.15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-5 - swing * 0.4, 26, 5, 2.5, -0.15, 0, Math.PI * 2);
+            ctx.fill();
+
+            // body
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.roundRect(-7, 0, 14, 14, 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(59,130,246,0.5)';
+            ctx.beginPath();
+            ctx.roundRect(-6, 1, 5, 6, 1);
+            ctx.fill();
+
+            // arms
+            ctx.lineWidth = 3.5;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.moveTo(7, 2);
+            ctx.lineTo(hasBox ? 10 : 11 + swing * 0.5, hasBox ? -10 : 10);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-7, 2);
+            ctx.lineTo(hasBox ? -10 : -11 - swing * 0.5, hasBox ? -10 : 10);
+            ctx.stroke();
+
+            // head
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(0, -8, 7, 0, Math.PI * 2);
+            ctx.fill();
+
+            // eyes
+            ctx.fillStyle = '#92400e';
+            ctx.beginPath(); ctx.arc(-2.5, -9, 1.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(2.5, -9, 1.2, 0, Math.PI * 2); ctx.fill();
+
+            // worried expression for cancel (downturned mouth)
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(0, -5.5, 2.5, Math.PI + 0.2, -0.2);
+            ctx.stroke();
+
+            // cap
+            ctx.fillStyle = '#1e40af';
+            ctx.fillRect(-7, -16, 14, 5);
+            ctx.beginPath();
+            ctx.roundRect(-6, -22, 12, 7, 2);
+            ctx.fill();
+            ctx.fillRect(-9, -16, 18, 3);
+
+            // pickup bend (reaching down for box)
+            if (phase === 'pickup') {
+                const bend = Math.min(1, (t - 25) / 27);
+                ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.moveTo(7, 2);
+                ctx.lineTo(14 - bend * 6, 8 + bend * 10);
+                ctx.stroke();
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.arc(14 - bend * 6, 8 + bend * 10, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // drop animation — arm pushes box down
+            if (phase === 'drop') {
+                const dropT = Math.min(1, (t - 105 + 27) / 20);
+                ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.moveTo(7, 2);
+                ctx.lineTo(10 + dropT * 4, -10 + dropT * 20);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function showCancelled() {
+            cancelO.classList.add('show');
+            setTimeout(() => {
+                cancelO.style.transition = 'opacity 0.4s';
+                cancelO.style.opacity = '0';
+                setTimeout(() => {
+                    cancelO.classList.remove('show');
+                    cancelO.style.opacity = '';
+                    cancelO.style.transition = '';
+                    stage.style.display = 'none';
+                    lbl.style.display = 'flex';
+                    setTimeout(() => { lbl.style.opacity = '1'; }, 20);
+                    btn.disabled = false;
+                    busy = false;
+                }, 450);
+            }, 2200);
+        }
+    </script>
+</body>
+
+</html>

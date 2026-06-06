@@ -1,198 +1,46 @@
 import { ensureDb } from "@/lib/sequelize";
 import { WhatsAppMessage } from "@/lib/models";
-
-import { metaGraphUrl } from "@/lib/meta-graph-version";
+import {
+  sendWebWhatsAppImage,
+  sendWebWhatsAppText,
+} from "@/lib/whatsapp-web/send";
 
 export type SendTextResult =
   | { ok: true; wamid?: string }
   | { ok: false; error: string; status: number };
 
-export type UploadMediaResult =
-  | { ok: true; mediaId: string }
-  | { ok: false; error: string; status: number };
-
-function graphErrorMessage(data: {
-  error?: {
-    message?: string;
-    type?: string;
-    code?: number;
-    error_subcode?: number;
-    error_user_title?: string;
-    error_user_msg?: string;
-  };
-}): string {
-  const e = data.error;
-  const parts = [
-    e?.error_user_title,
-    e?.error_user_msg,
-    e?.message,
-  ].filter(Boolean);
-  const base = parts.length > 0 ? parts.join(" — ") : "Meta API error";
-  const code =
-    e?.code != null
-      ? ` [Meta code ${e.code}${e.error_subcode != null ? `/${e.error_subcode}` : ""}]`
-      : "";
-  return `${base}${code}`;
-}
-
 export async function sendWhatsAppTextMessage(params: {
-  phoneNumberId: string;
-  accessToken: string;
+  businessId: number;
   toWaId: string;
+  whatsappChatId?: string | null;
   body: string;
 }): Promise<SendTextResult> {
-  const to = params.toWaId.replace(/\D/g, "");
-  if (!to) {
-    return { ok: false, error: "Invalid recipient phone / WhatsApp id", status: 400 };
-  }
-
-  const url = metaGraphUrl(`${params.phoneNumberId}/messages`);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "text",
-      text: { preview_url: false, body: params.body.trim() },
-    }),
+  return sendWebWhatsAppText({
+    businessId: params.businessId,
+    toWaId: params.toWaId,
+    whatsappChatId: params.whatsappChatId,
+    body: params.body,
   });
-
-  const data = (await res.json()) as {
-    messages?: { id?: string }[];
-    error?: {
-      message?: string;
-      type?: string;
-      code?: number;
-      error_subcode?: number;
-      error_user_title?: string;
-      error_user_msg?: string;
-    };
-  };
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: graphErrorMessage(data),
-      status: res.status >= 400 && res.status < 600 ? res.status : 502,
-    };
-  }
-
-  const wamid = data.messages?.[0]?.id;
-  return { ok: true, wamid };
 }
 
-/** Upload image bytes to WhatsApp Cloud API; returns media id for sending. */
-export async function uploadWhatsAppMediaFromBuffer(params: {
-  phoneNumberId: string;
-  accessToken: string;
+export async function sendWhatsAppImageMessage(params: {
+  businessId: number;
+  toWaId: string;
+  whatsappChatId?: string | null;
   buffer: Buffer;
   mimeType: string;
-  filename: string;
-}): Promise<UploadMediaResult> {
-  const form = new FormData();
-  form.append("messaging_product", "whatsapp");
-  form.append(
-    "file",
-    new Blob([new Uint8Array(params.buffer)], { type: params.mimeType }),
-    params.filename
-  );
-
-  const url = metaGraphUrl(`${params.phoneNumberId}/media`);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-    },
-    body: form,
-  });
-
-  const data = (await res.json()) as {
-    id?: string;
-    error?: {
-      message?: string;
-      code?: number;
-      error_subcode?: number;
-      error_user_title?: string;
-      error_user_msg?: string;
-    };
-  };
-
-  if (!res.ok || !data.id) {
-    return {
-      ok: false,
-      error: graphErrorMessage(data),
-      status: res.status >= 400 && res.status < 600 ? res.status : 502,
-    };
-  }
-  return { ok: true, mediaId: data.id };
-}
-
-/** Send a previously uploaded image by media id (optional caption). */
-export async function sendWhatsAppImageMessage(params: {
-  phoneNumberId: string;
-  accessToken: string;
-  toWaId: string;
-  mediaId: string;
   caption?: string;
 }): Promise<SendTextResult> {
-  const to = params.toWaId.replace(/\D/g, "");
-  if (!to) {
-    return { ok: false, error: "Invalid recipient phone / WhatsApp id", status: 400 };
-  }
-
-  const image: { id: string; caption?: string } = { id: params.mediaId };
-  if (params.caption?.trim()) {
-    image.caption = params.caption.trim().slice(0, 1024);
-  }
-
-  const url = metaGraphUrl(`${params.phoneNumberId}/messages`);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "image",
-      image,
-    }),
+  return sendWebWhatsAppImage({
+    businessId: params.businessId,
+    toWaId: params.toWaId,
+    whatsappChatId: params.whatsappChatId,
+    buffer: params.buffer,
+    mimeType: params.mimeType,
+    caption: params.caption,
   });
-
-  const data = (await res.json()) as {
-    messages?: { id?: string }[];
-    error?: {
-      message?: string;
-      code?: number;
-      error_subcode?: number;
-      error_user_title?: string;
-      error_user_msg?: string;
-    };
-  };
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: graphErrorMessage(data),
-      status: res.status >= 400 && res.status < 600 ? res.status : 502,
-    };
-  }
-
-  const wamid = data.messages?.[0]?.id;
-  return { ok: true, wamid };
 }
 
-/**
- * Fetch a public HTTPS image URL into a buffer (for manual sends).
- * Blocks obvious private / loopback hosts to reduce SSRF risk.
- */
 export async function fetchHttpsImageUrlToBuffer(
   rawUrl: string
 ): Promise<{ buffer: Buffer; mimeType: string; ext: string } | null> {
@@ -258,27 +106,26 @@ export function dataUrlToBufferAndMime(
   }
 }
 
-/** Outgoing row uses same `sender_wa_id` as the customer thread key. */
 export async function saveOutgoingWhatsAppMessage(params: {
-  businessPhoneNumberId: string | null;
+  businessId: number;
   contactWaId: string;
+  whatsappChatId?: string | null;
   text: string;
   messageType?: string;
-  /** Dashboard / manual sends default to `human`. Set `ai` when automation replies. */
   outgoingSource?: "human" | "ai";
 }): Promise<void> {
   try {
     await ensureDb();
-    const outgoingSource = params.outgoingSource ?? "human";
     await WhatsAppMessage.create({
-      businessPhoneNumberId: params.businessPhoneNumberId,
+      businessId: params.businessId,
       senderWaId: params.contactWaId,
+      whatsappChatId: params.whatsappChatId?.trim() || null,
       senderName: null,
       text: params.text,
       messageType: params.messageType ?? "text",
       direction: "outgoing",
       status: "sent",
-      outgoingSource,
+      outgoingSource: params.outgoingSource ?? "human",
     });
   } catch (error) {
     console.error("[whatsapp] Failed to persist outgoing message:", error);

@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useDashboard } from "@/components/dashboard/DashboardProvider";
+import { BallLoader } from "@/components/ui/BallLoader";
+import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
 import { COMPLETED_ORDERS_CHANGED_EVENT } from "@/lib/dashboard-events";
 import { dashboardFetch } from "@/lib/dashboard/session";
+import { UsageBarChart } from "@/components/plan/UsageBarChart";
+import type { PlanUsageSnapshot } from "@/lib/plan-usage";
 
 type ActivityRow = {
   contactWaId: string;
@@ -20,6 +25,8 @@ type OrderRow = {
 };
 
 type ActivityPayload = {
+  usage?: PlanUsageSnapshot;
+  daily?: { date: string; aiReplies: number; contacts: number }[];
   ai: {
     totalMessagesSent: number;
     uniqueUsers: number;
@@ -47,14 +54,14 @@ function fmtShort(iso: string | null): string {
 }
 
 export function ActivityPanel() {
+  const { bootstrapped, needsSetup } = useDashboard();
   const [data, setData] = useState<ActivityPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const phoneNumberId = localStorage.getItem("whatsappPhoneNumberId")?.trim();
-    if (!phoneNumberId) {
+    if (!bootstrapped || needsSetup) {
+      setData(null);
       setLoading(false);
-      toast.error("Missing phone number ID.");
       return;
     }
     setLoading(true);
@@ -76,7 +83,7 @@ export function ActivityPanel() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bootstrapped, needsSetup]);
 
   useEffect(() => {
     void load();
@@ -92,11 +99,12 @@ export function ActivityPanel() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center p-12 bg-[#f0f2f5]">
-        <div className="animate-spin h-10 w-10 border-4 border-[#075E54] border-t-transparent rounded-full" />
+        <BallLoader size="lg" />
       </div>
     );
   }
 
+  const usage = data?.usage;
   const ai = data?.ai ?? {
     totalMessagesSent: 0,
     uniqueUsers: 0,
@@ -119,10 +127,71 @@ export function ActivityPanel() {
           </button>
         </div>
 
+        {usage ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-black/8 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold text-[#667781] uppercase tracking-wide">
+                AI replies (this period)
+              </p>
+              <p className="text-2xl font-bold text-[#075E54] tabular-nums mt-1">
+                {usage.aiRepliesUsed.toLocaleString()}
+                {usage.aiRepliesLimit != null ? (
+                  <span className="text-base font-semibold text-[#667781]">
+                    {" "}
+                    / {usage.aiRepliesLimit.toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-sm font-semibold text-[#25D366]"> ∞</span>
+                )}
+              </p>
+              <p className="text-xs text-[#667781] mt-1">
+                {usage.aiRepliesRemaining != null
+                  ? `${usage.aiRepliesRemaining.toLocaleString()} left · ${usage.planLabel}`
+                  : `Unlimited · ${usage.planLabel}`}
+              </p>
+            </div>
+            <div className="rounded-xl border border-black/8 bg-white p-4 shadow-sm">
+              <p className="text-[10px] font-bold text-[#667781] uppercase tracking-wide">
+                Contacts (this period)
+              </p>
+              <p className="text-2xl font-bold text-[#111b21] tabular-nums mt-1">
+                {usage.contactsUsed.toLocaleString()}
+                {usage.contactsLimit != null ? (
+                  <span className="text-base font-semibold text-[#667781]">
+                    {" "}
+                    / {usage.contactsLimit.toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-sm font-semibold text-[#25D366]"> ∞</span>
+                )}
+              </p>
+              <p className="text-xs text-[#667781] mt-1">
+                {usage.contactsRemaining != null
+                  ? `${usage.contactsRemaining.toLocaleString()} left`
+                  : "Unlimited contacts"}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {data?.daily?.length ? (
+          <div className="rounded-xl border border-black/8 bg-white shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-black/6 bg-[#f8f9fa]">
+              <h3 className="text-xs font-bold text-[#111b21] uppercase tracking-wide">
+                Usage graph
+              </h3>
+            </div>
+            <UsageBarChart
+              data={data.daily}
+              aiLimit={usage?.aiRepliesLimit}
+            />
+          </div>
+        ) : null}
+
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-xl border border-black/8 bg-white p-4 shadow-sm">
             <p className="text-[10px] font-bold text-[#667781] uppercase tracking-wide">
-              AI replies sent
+              AI replies (all time)
             </p>
             <p className="text-2xl font-bold text-[#075E54] tabular-nums mt-1">
               {ai.totalMessagesSent}

@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pending Order Button</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #f3f4f6;
+        }
+
+        .btn-outer {
+            position: relative;
+            width: 260px;
+            height: 72px;
+            border-radius: 36px;
+            border: none;
+            cursor: pointer;
+            overflow: hidden;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            box-shadow: 0 6px 24px rgba(245, 158, 11, 0.4);
+            transition: transform 0.12s, box-shadow 0.12s;
+            display: block;
+        }
+
+        .btn-outer:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(245, 158, 11, 0.55);
+        }
+
+        .btn-outer:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+
+        .btn-outer:disabled {
+            cursor: default;
+        }
+
+        .label-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 9px;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.4px;
+            transition: opacity 0.3s;
+        }
+
+        .pulse {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #fff;
+            animation: pulseRing 1.2s ease-in-out infinite;
+        }
+
+        @keyframes pulseRing {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
+            }
+
+            70% {
+                box-shadow: 0 0 0 6px rgba(255, 255, 255, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+            }
+        }
+
+        .stage {
+            position: absolute;
+            inset: 0;
+            display: none;
+            background: #1a1a2e;
+            overflow: hidden;
+            border-radius: 36px;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .success-layer {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, #059669, #047857);
+            border-radius: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+
+        .success-layer.show {
+            opacity: 1;
+        }
+
+        .success-layer span {
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .tick {
+            width: 28px;
+            height: 28px;
+        }
+
+        .tick circle {
+            fill: none;
+            stroke: #fff;
+            stroke-width: 2.5;
+            stroke-dasharray: 82;
+            stroke-dashoffset: 82;
+            transition: stroke-dashoffset 0.5s 0.1s ease;
+        }
+
+        .tick polyline {
+            fill: none;
+            stroke: #fff;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            stroke-dasharray: 30;
+            stroke-dashoffset: 30;
+            transition: stroke-dashoffset 0.35s 0.55s ease;
+        }
+
+        .success-layer.show .tick circle {
+            stroke-dashoffset: 0;
+        }
+
+        .success-layer.show .tick polyline {
+            stroke-dashoffset: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <button class="btn-outer" id="btn" onclick="startScene()">
+        <div class="label-layer" id="lbl">
+            <div class="pulse"></div>
+            Pending
+        </div>
+
+        <div class="stage" id="stage">
+            <canvas id="c" width="260" height="72"></canvas>
+        </div>
+
+        <div class="success-layer" id="succ">
+            <svg class="tick" viewBox="0 0 28 28">
+                <circle cx="14" cy="14" r="12" />
+                <polyline points="8,14 12,18 20,10" />
+            </svg>
+            <span>Accepted!</span>
+        </div>
+    </button>
+
+    <script>
+        const btn = document.getElementById('btn');
+        const lbl = document.getElementById('lbl');
+        const stage = document.getElementById('stage');
+        const succ = document.getElementById('succ');
+        const cv = document.getElementById('c');
+        const ctx = cv.getContext('2d');
+
+        const W = 260, H = 72;
+        const GROUND = H - 16;
+        const STORE_RIGHT = 72;
+        const MAN_TARGET = 168;
+
+        let raf, busy = false;
+        let t, manX, manY, phase, boxPickedUp;
+
+        function resetState() {
+            t = 0; manX = 42; manY = GROUND - 28;
+            phase = 'idle'; boxPickedUp = false;
+        }
+
+        function startScene() {
+            if (busy) return;
+            busy = true;
+            btn.disabled = true;
+            lbl.style.opacity = '0';
+            setTimeout(() => {
+                lbl.style.display = 'none';
+                stage.style.display = 'block';
+                resetState();
+                loop();
+            }, 280);
+        }
+
+        function loop() {
+            ctx.clearRect(0, 0, W, H);
+            drawBg();
+            drawStore();
+            drawMan();
+            t++;
+
+            if (phase === 'idle' && t > 30) phase = 'pickup';
+            if (phase === 'pickup' && t > 55) { boxPickedUp = true; phase = 'walk'; }
+            if (phase === 'walk') {
+                manX += 1.8;
+                if (manX >= MAN_TARGET) { manX = MAN_TARGET; phase = 'stop'; }
+            }
+            if (phase === 'stop' && t > 110) {
+                phase = 'done';
+                cancelAnimationFrame(raf);
+                setTimeout(showAccepted, 200);
+                return;
+            }
+            raf = requestAnimationFrame(loop);
+        }
+
+        function drawBg() {
+            const g = ctx.createLinearGradient(0, 0, 0, H);
+            g.addColorStop(0, '#1a1a2e');
+            g.addColorStop(1, '#16213e');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, W, H);
+
+            ctx.fillStyle = '#2d3561';
+            ctx.fillRect(0, GROUND, W, H - GROUND);
+            ctx.fillStyle = '#3d4a7a';
+            ctx.fillRect(0, GROUND, W, 3);
+
+            ctx.fillStyle = 'rgba(245,158,11,0.25)';
+            for (let i = 0; i < 7; i++) {
+                const dx = ((t * 1.5) + (i * 38)) % W;
+                ctx.fillRect(dx, GROUND + 7, 22, 3);
+            }
+        }
+
+        function drawStore() {
+            const sx = 0, sw = STORE_RIGHT;
+
+            ctx.fillStyle = '#c2410c';
+            ctx.beginPath();
+            ctx.rect(sx, 8, sw, H - 8 - 16);
+            ctx.fill();
+
+            ctx.fillStyle = '#7c2d12';
+            ctx.fillRect(sx, 5, sw, 6);
+
+            ctx.fillStyle = '#991b1b';
+            ctx.beginPath();
+            ctx.moveTo(sx - 2, 5);
+            ctx.lineTo(sx + sw / 2, 0);
+            ctx.lineTo(sx + sw + 2, 5);
+            ctx.fill();
+
+            ctx.fillStyle = '#431407';
+            ctx.fillRect(28, GROUND - 22, 16, 22);
+            ctx.fillStyle = '#7c2d12';
+            ctx.fillRect(28, GROUND - 22, 16, 2);
+
+            ctx.fillStyle = '#fcd34d';
+            ctx.beginPath();
+            ctx.arc(38, GROUND - 10, 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(251,191,36,0.7)';
+            ctx.fillRect(8, 14, 18, 14);
+            ctx.strokeStyle = '#7c2d12';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(8, 14, 18, 14);
+            ctx.beginPath();
+            ctx.moveTo(17, 14); ctx.lineTo(17, 28);
+            ctx.moveTo(8, 21); ctx.lineTo(26, 21);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fef3c7';
+            ctx.font = 'bold 7px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('STORE', sw / 2, H - 20);
+
+            const boxes = boxPickedUp ? 2 : 3;
+            for (let i = 0; i < boxes; i++) {
+                const bx = 10, by = GROUND - 10 - (i * 10), bw = 18, bh = 8;
+                ctx.fillStyle = ['#f59e0b', '#d97706', '#b45309'][i];
+                ctx.beginPath();
+                ctx.roundRect(bx, by, bw, bh, 1);
+                ctx.fill();
+                ctx.strokeStyle = '#7c2d12';
+                ctx.lineWidth = 0.8;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(bx + bw / 2, by); ctx.lineTo(bx + bw / 2, by + bh);
+                ctx.stroke();
+            }
+        }
+
+        function drawMan() {
+            const x = manX, y = manY;
+            const walk = (phase === 'walk');
+            const swing = walk ? Math.sin(t * 0.28) * 18 : 0;
+            const bounce = walk ? Math.abs(Math.sin(t * 0.28)) * 3 : 0;
+
+            ctx.save();
+            ctx.translate(x, y - bounce);
+
+            // shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath();
+            ctx.ellipse(0, 28, 10, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // box on shoulder
+            if (boxPickedUp) {
+                ctx.fillStyle = '#b45309';
+                ctx.beginPath();
+                ctx.roundRect(-9, -26, 18, 13, 2);
+                ctx.fill();
+                ctx.strokeStyle = '#7c2d12'; ctx.lineWidth = 1;
+                ctx.strokeRect(-9, -26, 18, 13);
+                ctx.strokeStyle = 'rgba(252,211,77,0.5)'; ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, -26); ctx.lineTo(0, -13);
+                ctx.moveTo(-9, -20); ctx.lineTo(9, -20);
+                ctx.stroke();
+            }
+
+            ctx.lineCap = 'round';
+
+            // right leg
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.beginPath();
+            ctx.moveTo(2, 14);
+            ctx.lineTo(5 + swing * 0.4, 26);
+            ctx.stroke();
+
+            // left leg
+            ctx.beginPath();
+            ctx.moveTo(-2, 14);
+            ctx.lineTo(-5 - swing * 0.4, 26);
+            ctx.stroke();
+
+            // shoes
+            ctx.fillStyle = '#111827';
+            ctx.beginPath();
+            ctx.ellipse(5 + swing * 0.4, 26, 5, 2.5, 0.15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-5 - swing * 0.4, 26, 5, 2.5, -0.15, 0, Math.PI * 2);
+            ctx.fill();
+
+            // body
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.roundRect(-7, 0, 14, 14, 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(59,130,246,0.5)';
+            ctx.beginPath();
+            ctx.roundRect(-6, 1, 5, 6, 1);
+            ctx.fill();
+
+            // arms
+            ctx.lineWidth = 3.5;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.moveTo(7, 2);
+            ctx.lineTo(boxPickedUp ? 10 : 11 + swing * 0.5, boxPickedUp ? -10 : 10);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-7, 2);
+            ctx.lineTo(boxPickedUp ? -10 : -11 - swing * 0.5, boxPickedUp ? -10 : 10);
+            ctx.stroke();
+
+            // head
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(0, -8, 7, 0, Math.PI * 2);
+            ctx.fill();
+
+            // eyes
+            ctx.fillStyle = '#92400e';
+            ctx.beginPath(); ctx.arc(-2.5, -9, 1.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(2.5, -9, 1.2, 0, Math.PI * 2); ctx.fill();
+
+            // smile
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(0, -7, 2.5, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+
+            // cap
+            ctx.fillStyle = '#1e40af';
+            ctx.fillRect(-7, -16, 14, 5);
+            ctx.beginPath();
+            ctx.roundRect(-6, -22, 12, 7, 2);
+            ctx.fill();
+            ctx.fillRect(-9, -16, 18, 3);
+
+            // pickup bend animation
+            if (phase === 'pickup') {
+                const bend = Math.min(1, (t - 30) / 25);
+                ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 3.5;
+                ctx.beginPath();
+                ctx.moveTo(-7, 2);
+                ctx.lineTo(-14 + bend * 6, 8 + bend * 8);
+                ctx.stroke();
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath();
+                ctx.arc(-14 + bend * 6, 8 + bend * 8, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function showAccepted() {
+            succ.classList.add('show');
+            setTimeout(() => {
+                succ.style.transition = 'opacity 0.4s';
+                succ.style.opacity = '0';
+                setTimeout(() => {
+                    succ.classList.remove('show');
+                    succ.style.opacity = '';
+                    succ.style.transition = '';
+                    stage.style.display = 'none';
+                    lbl.style.display = 'flex';
+                    setTimeout(() => { lbl.style.opacity = '1'; }, 20);
+                    btn.disabled = false;
+                    busy = false;
+                }, 450);
+            }, 2200);
+        }
+    </script>
+</body>
+
+</html>

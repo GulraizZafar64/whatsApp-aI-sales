@@ -1,17 +1,23 @@
 export type InboxMessage = {
+  outgoingSource?: string | null;
   id: string;
   from: string;
+  whatsappChatId?: string | null;
   senderName: string | null;
   text: string;
   messageType: string;
   direction: string;
   status: string;
-  businessPhoneNumberId: string | null;
+  businessId: number;
   createdAt: string | null;
+  /** Resolved from product catalog for [Image] ProductName messages */
+  imagePreviewUrl?: string | null;
 };
 
 export type InboxConversation = {
   contactFrom: string;
+  /** WhatsApp jid to use when sending (…@lid or …@c.us). */
+  sendTo: string;
   displayPhone: string;
   title: string;
   lastPreview: string;
@@ -19,15 +25,19 @@ export type InboxConversation = {
   unreadCount: number;
 };
 
-export function digitsOnly(s: string): string {
-  return s.replace(/\D/g, "");
-}
+import {
+  digitsOnly,
+  isPlausiblePhoneDigits,
+} from "@/lib/wa-contact-id";
 
+export { digitsOnly } from "@/lib/wa-contact-id";
+
+/** Human-readable phone, or empty when id is a LID / internal WhatsApp id. */
 export function formatChatPhone(waId: string): string {
-  const d = digitsOnly(waId);
-  return d.length >= 10 ? `+${d}` : waId || "—";
+  const d = digitsOnly(waId.split("@")[0]);
+  if (!isPlausiblePhoneDigits(d)) return "";
+  return `+${d}`;
 }
-
 export function contactKey(raw: string): string {
   return digitsOnly(raw) || raw;
 }
@@ -54,13 +64,18 @@ export function buildConversations(messages: InboxMessage[]): InboxConversation[
     });
     const last = sorted[sorted.length - 1];
     let title: string | null = null;
+    let sendTo = contactFrom;
     for (const x of sorted) {
+      if (x.whatsappChatId?.includes("@")) {
+        sendTo = x.whatsappChatId;
+      }
       if (x.direction === "incoming" && x.senderName?.trim()) {
         title = x.senderName.trim();
       }
     }
     list.push({
       contactFrom,
+      sendTo,
       displayPhone: formatChatPhone(contactFrom),
       title: title ?? formatChatPhone(contactFrom),
       lastPreview: last?.text ?? "",
@@ -92,6 +107,44 @@ export function filterConversations(
       c.displayPhone.toLowerCase().includes(q) ||
       digitsOnly(c.contactFrom).includes(q)
   );
+}
+
+export function normalizeSearchText(s: string): string {
+  return s
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function messageMatchesSearch(
+  text: string | undefined | null,
+  query: string
+): boolean {
+  const q = normalizeSearchText(query);
+  if (!q) return false;
+  return normalizeSearchText(text ?? "").includes(q);
+}
+
+export function findThreadSearchMatch(
+  messages: InboxMessage[],
+  query: string
+): InboxMessage | null {
+  const q = normalizeSearchText(query);
+  if (!q) return null;
+  return messages.find((m) => messageMatchesSearch(m.text, q)) ?? null;
+}
+
+export function applyContactPhoneMap(
+  conversations: InboxConversation[],
+  contactPhones: Record<string, string>
+): InboxConversation[] {
+  if (Object.keys(contactPhones).length === 0) return conversations;
+  return conversations.map((c) => {
+    const resolved = contactPhones[contactKey(c.contactFrom)]?.trim();
+    if (!resolved) return c;
+    return { ...c, displayPhone: resolved };
+  });
 }
 
 export function threadForContact(

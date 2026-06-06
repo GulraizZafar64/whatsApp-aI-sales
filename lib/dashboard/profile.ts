@@ -4,6 +4,7 @@ export type DashboardProfile = {
   businessType: string | null;
   businessName: string | null;
   country: string | null;
+  currency: string | null;
   whatsappNumber: string | null;
   profileComplete: boolean;
 };
@@ -17,6 +18,7 @@ export async function fetchDashboardProfile(): Promise<DashboardProfile | null> 
     businessType?: string;
     businessName?: string;
     country?: string;
+    currency?: string;
     whatsappNumber?: string;
     profileComplete?: boolean;
   };
@@ -24,6 +26,7 @@ export async function fetchDashboardProfile(): Promise<DashboardProfile | null> 
     businessType: j.businessType?.trim() || null,
     businessName: j.businessName?.trim() || null,
     country: j.country?.trim() || null,
+    currency: j.currency?.trim() || null,
     whatsappNumber: j.whatsappNumber?.trim() || null,
     profileComplete: Boolean(j.profileComplete),
   };
@@ -33,6 +36,7 @@ export async function saveDashboardProfile(payload: {
   businessName: string;
   businessType: string;
   country: string;
+  currency: string;
 }): Promise<{ ok: true; profile: DashboardProfile } | { ok: false; error: string }> {
   const res = await dashboardFetch("/api/business/profile", {
     method: "PATCH",
@@ -43,6 +47,7 @@ export async function saveDashboardProfile(payload: {
     businessType?: string;
     businessName?: string;
     country?: string;
+    currency?: string;
     whatsappNumber?: string;
     profileComplete?: boolean;
   };
@@ -58,6 +63,7 @@ export async function saveDashboardProfile(payload: {
       businessType: j.businessType?.trim() || payload.businessType,
       businessName: j.businessName?.trim() || payload.businessName,
       country: j.country?.trim() || payload.country,
+      currency: j.currency?.trim() || payload.currency,
       whatsappNumber: j.whatsappNumber?.trim() || null,
       profileComplete: Boolean(j.profileComplete),
     },

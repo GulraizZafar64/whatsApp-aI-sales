@@ -1,6 +1,35 @@
 import type { ConversationTurn } from "@/lib/claude-generate";
+import type { CustomerPhotoIntent } from "@/lib/claude-customer-intent";
 
-type CatalogProduct = { id: number; productName: string };
+type CatalogProduct = {
+  id: number;
+  productName: string;
+  productDescription?: string | null;
+};
+
+/** Common Roman Urdu / English words → product name tokens to match. */
+const PRODUCT_WORD_ALIASES: Record<string, string[]> = {
+  shirt: [
+    "shirt",
+    "shirts",
+    "shite",
+    "shrit",
+    "shrt",
+    "tshirt",
+    "t-shirt",
+    "tee",
+    "kameez",
+    "kurta",
+  ],
+  pant: ["pant", "pants", "trouser", "trousers", "shalwar"],
+  jogger: ["jogger", "joggers"],
+  trousers: ["pant", "pants", "trouser", "trousers"],
+  shalwar: ["shalwar", "shalwar", "pant", "pants"],
+  dress: ["dress", "frock"],
+  shoe: ["shoe", "shoes", "joota", "jootay"],
+  bra: ["bra", "bras"],
+  black: ["black", "kala"],
+};
 
 export type WhatsAppConversationStage =
   | "default"
@@ -8,7 +37,7 @@ export type WhatsAppConversationStage =
   | "delivery_address_received"
   | "post_purchase_close";
 
-const USER_CLOSING_RE =
+export const USER_CLOSING_RE =
   /\b(bye|goodbye|thanks|thank you|that's all|that is all|i'?m done|all done|see you|no more|nothing else|ok thanks|thank u)\b/i;
 
 const USER_ORDER_COMMIT_RE =
@@ -26,8 +55,54 @@ const BARGAIN_COUNTER_OFFER_RE =
 const ADDRESS_ASK_RE =
   /\b(address|delivery address|where (?:should|to) (?:we )?deliver|shipping address|send (?:it )?to|deliver to)\b/i;
 
-const PHOTO_ASK_RE =
-  /\b(?:photo|photos|picture|pictures|image|images|pic|pics|send (?:me )?(?:the )?(?:a )?photo|show (?:me )?(?:the )?(?:a )?photo|see (?:the )?product)\b/i;
+const CATALOG_BROWSE_URDU =
+  /(?:کیا ہے|کیا کچھ|مصنوعات|فہرست|کیٹلاگ|دکھائیں سب|سب دکھاؤ)/;
+
+/** Size labels in descriptions — must not match a product without a name/category anchor. */
+const SIZE_VARIANT_WORDS = new Set([
+  "small",
+  "sm",
+  "medium",
+  "med",
+  "large",
+  "lg",
+  "xl",
+  "xxl",
+  "xxxl",
+  "xs",
+  "xxs",
+  "one",
+  "size",
+  "sizes",
+  "s",
+  "m",
+  "l",
+]);
+
+const WEAK_DESCRIPTION_TOKENS = new Set([
+  ...SIZE_VARIANT_WORDS,
+  "price",
+  "prices",
+  "available",
+  "stock",
+  "color",
+  "colors",
+  "new",
+  "best",
+  "free",
+  "delivery",
+  "order",
+  "pcs",
+  "piece",
+  "pieces",
+  "rs",
+  "pkr",
+]);
+
+function isWeakCatalogToken(token: string): boolean {
+  const w = token.toLowerCase();
+  return WEAK_DESCRIPTION_TOKENS.has(w) || w.length < 3;
+}
 
 function tokenAppearsInText(token: string, textLower: string): boolean {
   if (token.length < 3) return false;
@@ -75,65 +150,170 @@ function levenshtein(a: string, b: string): number {
   return row[n]!;
 }
 
+function searchTokensForProduct(p: {
+  productName: string;
+  productDescription?: string | null;
+}): string[] {
+  const tokens = new Set<string>();
+  const name = p.productName.trim().toLowerCase();
+  if (name) tokens.add(name);
+  for (const w of name.split(/[\s\-_/]+/).filter((x) => x.length >= 2)) {
+    tokens.add(w);
+  }
+  const desc = p.productDescription?.trim().toLowerCase() ?? "";
+  for (const w of desc.split(/[\s\-_/.,]+/).filter((x) => x.length >= 3)) {
+    if (isWeakCatalogToken(w)) continue;
+    tokens.add(w);
+  }
+  for (const t of tokens) {
+    const aliases = PRODUCT_WORD_ALIASES[t];
+    if (aliases) for (const a of aliases) tokens.add(a);
+  }
+  const head = name.split(/[\s\-_/]+/).filter(Boolean).pop();
+  if (head && head.length >= 3) {
+    tokens.add(head);
+    const headAliases = PRODUCT_WORD_ALIASES[head];
+    if (headAliases) for (const a of headAliases) tokens.add(a);
+  }
+  return [...tokens];
+}
+
+function userMessageHasProductAnchor(
+  t: string,
+  p: { productName: string; productDescription?: string | null }
+): boolean {
+  const name = p.productName.trim().toLowerCase();
+  if (name.length >= 2 && t.includes(name)) return true;
+
+  for (const w of name.split(/[\s\-_/]+/).filter((x) => x.length >= 3)) {
+    if (!isWeakCatalogToken(w) && tokenAppearsInText(w, t)) return true;
+  }
+
+  const productTokens = searchTokensForProduct(p);
+  for (const [category, aliases] of Object.entries(PRODUCT_WORD_ALIASES)) {
+    const userSaidCategory =
+      tokenAppearsInText(category, t) ||
+      aliases.some((a) => a.length >= 3 && tokenAppearsInText(a, t));
+    if (!userSaidCategory) continue;
+    if (
+      aliases.some((a) => productTokens.includes(a) || name.includes(a)) ||
+      name.includes(category) ||
+      productTokens.includes(category)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function productMentionedInText(
+  p: { id: number; productName: string; productDescription?: string | null },
+  raw: string,
+  t: string
+): boolean {
+  const name = p.productName.trim().toLowerCase();
+  if (name.length >= 2 && (raw.includes(name) || t.includes(name))) {
+    return true;
+  }
+  const words = wordsFromText(t);
+  const tokens = searchTokensForProduct(p);
+  const matched: string[] = [];
+  for (const token of tokens) {
+    if (token.length < 3) continue;
+    if (tokenAppearsInText(token, t)) matched.push(token);
+    else if (words.some((word) => tokenMatchesWordFuzzy(token, word))) {
+      matched.push(token);
+    }
+  }
+  if (matched.length === 0) return false;
+
+  const strong = matched.filter((tok) => !isWeakCatalogToken(tok));
+  if (strong.length > 0) return true;
+
+  return userMessageHasProductAnchor(t, p);
+}
+
+/** Categories the customer named (shirt, shoe, etc.) — used to drop wrong catalog matches. */
+export function categoriesMentionedInUserText(text: string): string[] {
+  const t = text.trim().toLowerCase();
+  const found: string[] = [];
+  for (const [category, aliases] of Object.entries(PRODUCT_WORD_ALIASES)) {
+    if (
+      tokenAppearsInText(category, t) ||
+      aliases.some((a) => a.length >= 3 && tokenAppearsInText(a, t))
+    ) {
+      found.push(category);
+    }
+  }
+  return found;
+}
+
+function productMatchesUserCategories(
+  p: { productName: string; productDescription?: string | null },
+  categories: string[]
+): boolean {
+  const name = p.productName.trim().toLowerCase();
+  const tokens = searchTokensForProduct(p);
+  return categories.some((category) => {
+    const aliases = PRODUCT_WORD_ALIASES[category] ?? [category];
+    return (
+      name.includes(category) ||
+      aliases.some((a) => name.includes(a) || tokens.includes(a)) ||
+      tokens.includes(category)
+    );
+  });
+}
+
+function filterMatchesByUserCategories(
+  matched: number[],
+  text: string,
+  products: CatalogProduct[]
+): number[] {
+  const categories = categoriesMentionedInUserText(text);
+  if (!categories.length) return matched;
+  const filtered = matched.filter((id) => {
+    const p = products.find((x) => x.id === id);
+    return p && productMatchesUserCategories(p, categories);
+  });
+  return filtered.length ? filtered : matched;
+}
+
 /** Product IDs whose names appear in `text` (longest names first). */
 export function findProductIdsMentionedInText(
   text: string,
   products: CatalogProduct[]
 ): number[] {
-  const t = text.toLowerCase();
-  const ranked = [...products]
-    .map((p) => ({
-      id: p.id,
-      name: p.productName.trim().toLowerCase(),
-    }))
-    .filter((p) => p.name.length >= 2)
-    .sort((a, b) => b.name.length - a.name.length);
+  const raw = text.trim();
+  const t = raw.toLowerCase();
+  const ranked = [...products].sort(
+    (a, b) => b.productName.length - a.productName.length
+  );
 
   const matched: number[] = [];
   for (const p of ranked) {
-    if (t.includes(p.name)) {
-      matched.push(p.id);
-      continue;
-    }
-    const tokens = p.name.split(/[\s\-_/]+/).filter((w) => w.length >= 3);
-    const words = wordsFromText(t);
-    if (
-      tokens.some(
-        (w) =>
-          tokenAppearsInText(w, t) ||
-          words.some((word) => tokenMatchesWordFuzzy(w, word))
-      )
-    ) {
+    if (productMentionedInText(p, raw, t)) {
       matched.push(p.id);
     }
   }
-  return [...new Set(matched)];
+  const unique = [...new Set(matched)];
+  return filterMatchesByUserCategories(unique, raw, products);
 }
 
-/** Product ids the customer asked to see in a photo request (current message only). */
-export function productIdsFromPhotoRequest(
-  userText: string,
+function productIdsFromImageCaptionsInText(
+  text: string,
   products: CatalogProduct[]
 ): number[] {
-  const t = userText.trim();
-  if (!t || !PHOTO_ASK_RE.test(t)) return [];
-
-  const patterns = [
-    /\b(?:send|show)\s+(?:me\s+)?(?:the\s+)?(?:a\s+)?(.+?)\s+(?:image|images|photo|photos|pic|pics)\b/i,
-    /\b(?:image|images|photo|photos|pic|pics)\s+(?:of|for)\s+(.+?)(?:\s+please)?\s*$/i,
-  ];
-  for (const re of patterns) {
-    const m = re.exec(t);
-    if (m?.[1]?.trim()) {
-      const ids = findProductIdsMentionedInText(m[1], products);
-      if (ids.length) return ids;
+  const ids = new Set<number>();
+  const re = /\[Image\]\s*([^\n]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const caption = m[1].replace(/\s+#\d+\s*$/i, "").trim();
+    if (!caption) continue;
+    for (const id of findProductIdsMentionedInText(caption, products)) {
+      ids.add(id);
     }
   }
-  return findProductIdsMentionedInText(t, products);
-}
-
-export function customerWantsProductPhotos(userText: string): boolean {
-  return isCatalogBrowseIntent(userText) || PHOTO_ASK_RE.test(userText.trim());
+  return [...ids];
 }
 
 export function productIdsWithPhotosAlreadySent(
@@ -150,6 +330,9 @@ export function productIdsWithPhotosAlreadySent(
             .filter((b) => b.type === "text")
             .map((b) => ("text" in b ? b.text : ""))
             .join("\n");
+    for (const id of productIdsFromImageCaptionsInText(text, products)) {
+      sent.add(id);
+    }
     for (const p of products) {
       if (text.includes(`[Image] ${p.productName}`)) {
         sent.add(p.id);
@@ -160,7 +343,8 @@ export function productIdsWithPhotosAlreadySent(
 }
 
 export function isCatalogBrowseIntent(text: string): boolean {
-  return CATALOG_BROWSE_RE.test(text.trim());
+  const t = text.trim();
+  return CATALOG_BROWSE_RE.test(t) || CATALOG_BROWSE_URDU.test(t);
 }
 
 function threadPlainText(history: ConversationTurn[]): string {
@@ -175,19 +359,176 @@ function threadPlainText(history: ConversationTurn[]): string {
     .join("\n");
 }
 
-export function looksLikeDeliveryAddress(text: string): boolean {
+const ORDER_OR_PRICE_IN_ADDRESS_RE =
+  /\b(total|subtotal|qty|quantity|rupees?|rs\.?|pkr|usd|\$|price|shirt|pant|pants|order|confirm|shoes|jogger|joggers|cost|rate|kitna|kya|hai|ha|size|sizes|small|medium|large|extra|xl|xxl)\b/i;
+
+const PRODUCT_INQUIRY_RE =
+  /\b(?:do you have|have you got|got any|any\s+\w|show me|what do you sell|available in|in stock)\b/i;
+
+function hasAddressMarkers(text: string): boolean {
   const t = text.trim();
-  if (t.length < 12) return false;
-  if (ADDRESS_ASK_RE.test(t) && t.length >= 15) return true;
-  if (/\b\d{1,5}\s+\w+\s+(street|st\.?|road|rd\.?|avenue|ave\.?|lane|block|house|flat|apt)\b/i.test(t)) {
+  if (!t) return false;
+  if (
+    /\b\d{1,5}\s+\w+\s+(street|st\.?|road|rd\.?|avenue|ave\.?|lane|block|house|flat|apt)\b/i.test(
+      t
+    )
+  ) {
     return true;
   }
-  if (/\b(deliver|address|postal|zip|pin\s*code|city|town)\b/i.test(t) && t.length >= 20) {
+  if (
+    /\b(house|flat|apt|apartment|block|street|road|phase|sector|society|colony|town|city|address|postal|zip|pin\s*code|deliver\s+to)\b/i.test(
+      t
+    )
+  ) {
     return true;
   }
-  if ((t.match(/,/g) || []).length >= 2 && t.length >= 22) return true;
-  if (/\b(phone|mob|contact|whatsapp)\s*[:\-]?\s*\+?\d{7,}/i.test(t)) return true;
-  return t.length >= 45;
+  if ((t.match(/,/g) || []).length >= 2) return true;
+  if (/\b(phone|mob|mobile|contact|whatsapp)\s*[:\-]?\s*\+?\d{7,}/i.test(t)) {
+    return true;
+  }
+  if (/\+\d{10,15}\b/.test(t)) return true;
+  if (/\b(?:#|no\.?|plot|house)\s*\d+/i.test(t) && t.length >= 10) return true;
+  return false;
+}
+
+function isClearlyNotDeliveryAddress(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.includes("?")) return true;
+  if (PRODUCT_INQUIRY_RE.test(t)) return true;
+  if (isCatalogBrowseIntent(t)) return true;
+  if (isOrderLikeUserMessage(t) && !hasAddressMarkers(t)) return true;
+  if (ORDER_OR_PRICE_IN_ADDRESS_RE.test(t) && !hasAddressMarkers(t)) return true;
+  return false;
+}
+
+function assistantTextFromTurn(h: ConversationTurn): string {
+  return typeof h.content === "string"
+    ? h.content
+    : h.content
+        .filter((b) => b.type === "text")
+        .map((b) => ("text" in b ? b.text : ""))
+        .join("\n");
+}
+
+/** User messages sent after the most recent assistant request for a delivery address. */
+function userMessagesAfterAddressRequest(
+  history: ConversationTurn[],
+  userText: string
+): string[] {
+  let lastAddressAskIdx = -1;
+  for (let i = 0; i < history.length; i++) {
+    const h = history[i]!;
+    if (h.role !== "assistant") continue;
+    if (ADDRESS_ASK_RE.test(assistantTextFromTurn(h))) {
+      lastAddressAskIdx = i;
+    }
+  }
+  if (lastAddressAskIdx < 0) return [];
+
+  const after = history
+    .slice(lastAddressAskIdx + 1)
+    .filter((h) => h.role === "user")
+    .map((h) => (typeof h.content === "string" ? h.content.trim() : ""))
+    .filter(Boolean);
+
+  const current = userText.trim();
+  return current ? [...after, current] : after;
+}
+
+export function looksLikeDeliveryAddress(
+  text: string,
+  options?: { assistantAskedForAddress?: boolean }
+): boolean {
+  const t = text.trim();
+  if (t.length < 8) return false;
+  if (/^\[image\]/i.test(t)) return false;
+  if (isClearlyNotDeliveryAddress(t)) return false;
+
+  if (hasAddressMarkers(t)) return true;
+
+  // Long free-form address without explicit markers (e.g. full street paragraph).
+  if (t.length >= 60 && /^[a-z0-9\s,.\-#'"/]+$/i.test(t)) return true;
+
+  void options;
+  return false;
+}
+
+/** Most recent user message that looks like a delivery address. */
+export function findDeliveryAddressInConversation(
+  history: ConversationTurn[],
+  userText: string,
+  assistantAskedForAddress: boolean
+): string | null {
+  const msgs = assistantAskedForAddress
+    ? userMessagesAfterAddressRequest(history, userText)
+    : userMessageTexts(history, userText);
+
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i]!;
+    if (looksLikeDeliveryAddress(m, { assistantAskedForAddress })) {
+      return m.trim().slice(0, 2000);
+    }
+  }
+  return null;
+}
+
+/** Parse delivery address from the assistant confirmation / update summary. */
+export function extractDeliveryAddressFromAssistantText(
+  text: string
+): string | null {
+  const patterns = [
+    /(?:delivery\s*address|deliver(?:y)?\s*to|shipping\s*address|address|pata)\s*[:\-*]\s*([^\n]+)/i,
+    /(?:new\s+address|naya\s+pata|updated\s+address|address\s+update)\s*[:\-*]?\s*([^\n]+)/i,
+    /(?:address\s+(?:is|will\s+be|updated\s+to|yeh|ye|ho\s*ga))\s*[:\-*]?\s*([^\n]+)/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(text);
+    const addr = m?.[1]?.trim();
+    if (addr && addr.length >= 6) return addr.slice(0, 2000);
+  }
+  return null;
+}
+
+/** Build cart lines from AI confirmation text when [[ORDER:]] footers are missing. */
+export function orderIntentsFromAssistantConfirmation(
+  visibleText: string,
+  products: CatalogProduct[],
+  defaultUnitPrice: (productId: number) => number
+): WhatsAppOrderIntentLine[] {
+  const lines: WhatsAppOrderIntentLine[] = [];
+  const seen = new Set<number>();
+
+  for (const rawLine of visibleText.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.length < 4) continue;
+
+    const bullet = /^[-•*]\s*/.exec(line);
+    const body = bullet ? line.slice(bullet[0].length) : line;
+
+    const qtyMatch = /^(\d+)\s+(.+)$/.exec(body);
+    if (!qtyMatch) continue;
+
+    const quantity = Math.max(1, Math.min(10_000, Number.parseInt(qtyMatch[1], 10)));
+    let desc = qtyMatch[2]!.trim();
+
+    // Strip price suffix but discard parsed price — always use catalog price
+    const priceMatch = /(?:=|:)\s*([\d.]+)\s*(?:rupees?|rs\.?|pkr)?\s*$/i.exec(desc);
+    if (priceMatch) {
+      desc = desc.slice(0, priceMatch.index).trim();
+    }
+
+    const ids = findProductIdsMentionedInText(desc, products);
+    if (ids.length !== 1) continue;
+    const productId = ids[0]!;
+    if (seen.has(productId)) continue;
+    seen.add(productId);
+
+    const unitPrice = defaultUnitPrice(productId);
+    lines.push({ productId, quantity, unitPrice });
+  }
+
+  return lines;
 }
 
 export function assistantAskedForAddress(
@@ -224,8 +565,27 @@ export function countCustomerDiscountRequests(
   return count;
 }
 
-/** Parse qty for a product name from user text (e.g. "2 zinger" → 2). */
-function quantityForProductInText(
+function parseQtyWord(raw: string): number | null {
+  const w = raw.toLowerCase();
+  if (/^\d{1,4}$/.test(w)) {
+    const q = Number.parseInt(w, 10);
+    return Number.isFinite(q) && q > 0 ? q : null;
+  }
+  const map: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    ek: 1,
+    ak: 1,
+    aik: 1,
+  };
+  return map[w] ?? null;
+}
+
+/** Parse qty for a product name from user text (e.g. "2 zinger", "1 shirt 1 pant"). */
+export function quantityForProductInText(
   textLower: string,
   productName: string
 ): number {
@@ -234,12 +594,13 @@ function quantityForProductInText(
 
   const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const full = escape(name);
-  let m = new RegExp(`\\b(\\d{1,4})\\s*(?:x\\s*)?(?:of\\s+)?${full}\\b`, "i").exec(
-    textLower
-  );
+  let m = new RegExp(
+    `\\b(\\d{1,4}|one|two|three|four|five|ek|ak|aik)\\s*(?:x\\s*)?(?:of\\s+)?${full}\\b`,
+    "i"
+  ).exec(textLower);
   if (m) {
-    const q = Number.parseInt(m[1], 10);
-    if (Number.isFinite(q) && q > 0) return Math.min(q, 10_000);
+    const q = parseQtyWord(m[1]!);
+    if (q) return Math.min(q, 10_000);
   }
 
   m = new RegExp(`\\b${full}\\s*[x×]\\s*(\\d{1,4})\\b`, "i").exec(textLower);
@@ -249,14 +610,29 @@ function quantityForProductInText(
   }
 
   const tokens = name.split(/[\s\-_/]+/).filter((w) => w.length >= 3);
-  for (const token of tokens) {
+  const head = tokens.length > 0 ? tokens[tokens.length - 1]! : name;
+  const searchTokens = [...new Set([...tokens, head])];
+
+  for (const token of searchTokens) {
     const tok = escape(token);
-    m = new RegExp(`\\b(\\d{1,4})\\s*(?:x\\s*)?[\\w\\s-]*?${tok}\\b`, "i").exec(
-      textLower
-    );
+    m = new RegExp(
+      `\\b(\\d{1,4}|one|two|three|four|five|ek|ak|aik)\\s+(?:[\\w\\s-]{0,24}?\\b)?${tok}\\b`,
+      "i"
+    ).exec(textLower);
     if (m) {
-      const q = Number.parseInt(m[1], 10);
-      if (Number.isFinite(q) && q > 0) return Math.min(q, 10_000);
+      const q = parseQtyWord(m[1]!);
+      if (q) return Math.min(q, 10_000);
+    }
+    for (const alias of PRODUCT_WORD_ALIASES[token] ?? []) {
+      const a = escape(alias);
+      m = new RegExp(
+        `\\b(\\d{1,4}|one|two|ek|ak|aik)\\s+(?:[\\w\\s-]{0,20}?\\b)?${a}\\b`,
+        "i"
+      ).exec(textLower);
+      if (m) {
+        const q = parseQtyWord(m[1]!);
+        if (q) return Math.min(q, 10_000);
+      }
     }
   }
 
@@ -268,8 +644,264 @@ export type ThreadOrderIntent = {
   quantity: number;
 };
 
+/**
+ * Matches when customer wants to ADD items to an existing order
+ * (add, one more, extra, etc.) — NOT update/change/modify requests.
+ * Update/change requests are handled separately via ORDER_UPDATE_REQUEST_RE.
+ */
+export const ORDER_MODIFICATION_RE =
+  /\b(add|aur|extra|another|one more|ek aur|aik aur|or\s+\d+|plus|include|mazeed|zyada|ziyada|\d+\s+more)\b/i;
+
+/**
+ * Matches when customer is REQUESTING to update/change their order (step 1).
+ * At this point the AI should show the existing order and ask what to change.
+ * The DB must NOT be updated yet.
+ */
+export const ORDER_UPDATE_REQUEST_RE =
+  /\b(update\s*(?:my\s*)?order|change\s*(?:my\s*)?order|order\s*(?:update|change|modify|edit)|modify\s*(?:my\s*)?order|badlo\s*(?:mera\s*)?order|order\s*badlo|mera\s*order\s*(?:update|change|badlo))\b|\b(?:address|pata|delivery)\s*(?:update|change|badlo|badal|modify|edit)\b|\b(?:update|change|badlo|badal)\s*(?:address|pata|delivery)\b/i;
+
+/** Customer wants only specific item(s), e.g. "sirf blue shirt" — replace cart, do not merge. */
+const ORDER_CART_REPLACE_RE =
+  /\b(?:only|just|sirf|bas|sirfa|remove|without|except|nahi\s+(?:chahiye|lena)|don't\s+want|do\s+not\s+want)\b/i;
+
+/** Swap one product for another, e.g. "shirt ki jaga shoes". */
+const ORDER_CART_SWAP_RE =
+  /\b(?:ki\s+jaga|ke\s+bajaye|ke\s+badlay|badlay|instead\s+of|replace(?:\s+with)?|change\s+to)\b/i;
+
+export function isOrderCartSwapMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 6) return false;
+  return ORDER_CART_SWAP_RE.test(t);
+}
+
+export function isOrderCartReplacementMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 4) return false;
+  if (isOrderItemRemovalMessage(t)) return false;
+  return ORDER_CART_REPLACE_RE.test(t) || isOrderCartSwapMessage(t);
+}
+
+/** Product(s) the customer wants removed in a swap, e.g. "shirt" in "shirt ki jaga shoes". */
+export function productIdsToSwapOut(
+  text: string,
+  products: CatalogProduct[]
+): number[] {
+  const t = text.trim();
+  const patterns = [
+    /\b(.+?)\s+ki\s+jaga\b/i,
+    /\b(.+?)\s+ke\s+bajaye\b/i,
+    /\binstead\s+of\s+(.+?)(?:\s+(?:with|and|aur|or)\b|[,.]|$)/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(t);
+    if (m?.[1]?.trim()) {
+      const ids = findProductIdsMentionedInText(m[1], products);
+      if (ids.length) return ids;
+    }
+  }
+  return [];
+}
+
+export function productIdsToSwapIn(
+  text: string,
+  products: CatalogProduct[]
+): number[] {
+  const t = text.trim();
+  const afterSwap = [
+    /\b(?:ki\s+jaga|ke\s+bajaye|instead\s+of\s+.+?)\s+(.+?)(?:\s+(?:or|aur|and)\b|[,.]|$)/i,
+    /\breplace(?:\s+with)?\s+(.+?)(?:\s+(?:or|aur|and)\b|[,.]|$)/i,
+  ];
+  for (const re of afterSwap) {
+    const m = re.exec(t);
+    if (m?.[1]?.trim()) {
+      const ids = findProductIdsMentionedInText(m[1], products);
+      if (ids.length) return ids;
+    }
+  }
+  const all = findProductIdsMentionedInText(t, products);
+  const out = productIdsToSwapOut(t, products);
+  return all.filter((id) => !out.includes(id));
+}
+
+const ADDRESS_CHANGE_RE =
+  /\b(?:address|pata|location|delivery)\s*(?:bi\s+)?(?:change|update|badlo|badal|kr\s*do|kar\s*do|kr\s*den|kar\s*den)\b|\b(?:change|update|badlo|badal)\s+(?:address|pata|delivery)\b/i;
+
+/** Customer wants to change delivery address on an existing order. */
+export function customerRequestsAddressUpdate(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 4) return false;
+  return ADDRESS_CHANGE_RE.test(t);
+}
+
+/** Extract delivery address from "… address karachi korangi" style one-line orders. */
+export function extractAddressFromCombinedOrderMessage(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+  const patterns = [
+    /\baddress\s*[:\-]?\s*(.+)$/i,
+    /\bpata\s*[:\-]?\s*(.+)$/i,
+    /\bdeliver(?:y)?\s+(?:at|to|par|on)\s+(.+)$/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(t);
+    const addr = m?.[1]?.trim();
+    if (addr && addr.length >= 4 && !isClearlyNotDeliveryAddress(addr)) {
+      return addr.slice(0, 2000);
+    }
+  }
+  return null;
+}
+
+/** Extract new delivery address from an order-update message. */
+export function extractAddressFromOrderUpdateMessage(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+
+  const patterns = [
+    /\b(?:address|pata|location)\s*(?:bi\s+)?(?:change|update|badlo|badal)\s*(?:kr\s*do|kar\s*do|karo|kr\s*den|kar\s*den)?\s*[:\-]?\s*(.+)$/i,
+    /\b(?:new\s+address|naya\s+pata|mera\s+pata|yeh\s+pata|ye\s+pata)\s*[:\-]?\s*(.+)$/i,
+    /\b(?:deliver|delivery)\s+(?:to|at|par|on)\s+(.+)$/i,
+    /\b(?:address|pata)\s+(?:yeh|ye|hai|ha|ho\s*ga)\s*[:\-]?\s*(.+)$/i,
+  ];
+
+  if (ADDRESS_CHANGE_RE.test(t)) {
+    for (const re of patterns) {
+      const m = re.exec(t);
+      const addr = m?.[1]?.trim();
+      if (addr && addr.length >= 6) return addr.slice(0, 2000);
+    }
+  }
+
+  for (const re of patterns) {
+    const m = re.exec(t);
+    const addr = m?.[1]?.trim();
+    if (addr && addr.length >= 6) return addr.slice(0, 2000);
+  }
+
+  return null;
+}
+
+/** Latest address from user messages during a pending order update flow. */
+export function findLatestAddressForOrderUpdate(
+  history: ConversationTurn[],
+  userText: string
+): string | null {
+  const msgs = userMessageTexts(history, userText);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i]!.trim();
+    if (!m || m.length < 8) continue;
+    if (isCustomerOrderUpdateConfirmation(m)) continue;
+    if (isOrderUpdateRequest(m) && !extractAddressFromOrderUpdateMessage(m)) continue;
+
+    const fromUpdate = extractAddressFromOrderUpdateMessage(m);
+    if (fromUpdate) return fromUpdate;
+
+    if (looksLikeDeliveryAddress(m, { assistantAskedForAddress: true })) {
+      return m.slice(0, 2000);
+    }
+  }
+  return null;
+}
+
+const ORDER_ITEM_REMOVE_RE =
+  /\b(?:don'?t\s+want|do\s+not\s+want|not\s+want|no\s+need|cancel|remove|skip|without|except|nahi?\s+(?:chahiye|chiya|chiye|lena)|ni\s+(?:mujh(?:e|a|i)|chahiye|chiya|chiye)|mat\s+(?:do|le|lena)|ni\s+.*?\s+(?:chahiye|chiya|chiye|lena))\b/i;
+
+/** Customer wants to drop item(s) from cart, e.g. "joggers ni chahiye". */
+export function isOrderItemRemovalMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 4) return false;
+  if (!ORDER_ITEM_REMOVE_RE.test(t)) return false;
+  return (
+    categoriesMentionedInUserText(t).length > 0 ||
+    /\b(?:jogger|joggers|shoes?|shirt|pant|pants|dress|bra|kameez)\b/i.test(t)
+  );
+}
+
+export function productIdsToRemoveFromOrder(
+  text: string,
+  products: CatalogProduct[]
+): number[] {
+  const ids = findProductIdsMentionedInText(text, products);
+  if (ids.length) return ids;
+  const categories = categoriesMentionedInUserText(text);
+  if (!categories.length) return [];
+  return products
+    .filter((p) => productMatchesUserCategories(p, categories))
+    .map((p) => p.id);
+}
+
+const SIMPLE_GREETING_RE =
+  /^(?:hi|hello|hey|hlo|hlw|salam|assalam(?:u\s*alaikum)?|aoa|good\s+(?:morning|afternoon|evening)|namaste|yo+)\.?$/i;
+
+/** Short greeting only — not a product or order message. */
+export function isSimpleGreetingMessage(text: string): boolean {
+  const t = text.trim().replace(/[.!?…]+$/g, "").trim();
+  if (!t || t.length > 48) return false;
+  return SIMPLE_GREETING_RE.test(t);
+}
+
+/** Customer is actively ordering/updating — safe to read order intent from chat. */
+export function isActiveOrderMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || isSimpleGreetingMessage(t)) return false;
+  if (USER_CLOSING_RE.test(t)) return false;
+  if (isOrderStatusInquiryOnly(t)) return false;
+  return (
+    isOrderLikeUserMessage(t) ||
+    isOrderModificationMessage(t) ||
+    isOrderCartReplacementMessage(t) ||
+    isOrderCartSwapMessage(t) ||
+    isOrderItemRemovalMessage(t) ||
+    isOrderUpdateRequest(t)
+  );
+}
+
+function isOrderStatusInquiryOnly(text: string): boolean {
+  if (!/\b(?:order|status|mera\s+order|track)\b/i.test(text)) return false;
+  return (
+    /\b(?:status|track|mera\s+order|my\s+order|order\s+ka\s+status)\b/i.test(text) &&
+    !isOrderLikeUserMessage(text) &&
+    !isOrderModificationMessage(text)
+  );
+}
+
+function messagesForOrderIntentScan(params: {
+  history: ConversationTurn[];
+  userText: string;
+  products: CatalogProduct[];
+}): string[] {
+  const t = params.userText.trim();
+  if (!t) return [];
+
+  const idsInCurrent = findProductIdsMentionedInText(t, params.products);
+  if (
+    idsInCurrent.length > 0 &&
+    (isOrderLikeUserMessage(t) ||
+      isOrderModificationMessage(t) ||
+      USER_ORDERISH_ROMAN_URDU_RE.test(t))
+  ) {
+    return [t];
+  }
+
+  if (!isActiveOrderMessage(t)) {
+    return [t];
+  }
+
+  const userMsgs = userMessageTexts(params.history, t);
+  const orderMsgs = userMsgs.filter(
+    (m) =>
+      isOrderLikeUserMessage(m) ||
+      isOrderModificationMessage(m) ||
+      isOrderCartReplacementMessage(m)
+  );
+  return orderMsgs.length > 0 ? orderMsgs.slice(-2) : [t];
+}
+
 const USER_ORDERISH_RE =
   /\b(?:order|want|need|get|take|buy|give me|i(?:'ll| will) (?:have|take|get))\b/i;
+
+const USER_ORDERISH_ROMAN_URDU_RE =
+  /\b(?:chahiye|chiya|chiye|lena|dena|mujhe|muja|muji|bhejo|bhej do|la do|kr do|kar do|le lo|lelo|order kar|krna|karna)\b/i;
 
 function userMessageTexts(
   history: ConversationTurn[],
@@ -284,17 +916,68 @@ function userMessageTexts(
   ].filter(Boolean);
 }
 
+/** Customer wants to ADD items to existing order (not an update/change request). */
+export function isOrderModificationMessage(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 3) return false;
+  // Explicitly exclude update/change requests — those are handled separately
+  if (ORDER_UPDATE_REQUEST_RE.test(t)) return false;
+  return ORDER_MODIFICATION_RE.test(t);
+}
+
+/**
+ * Customer is requesting to update/change their existing order (step 1 of 2).
+ * The AI should show the order and ask what to change — DB not updated yet.
+ */
+export function isOrderUpdateRequest(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length < 4) return false;
+  return ORDER_UPDATE_REQUEST_RE.test(t);
+}
+
+/** Short yes/ok/confirm replies after the AI showed an order update summary. */
+export function isCustomerOrderUpdateConfirmation(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > 120) return false;
+  if (isSimpleGreetingMessage(t)) return false;
+  if (isOrderUpdateRequest(t) || isOrderCartSwapMessage(t)) return false;
+  if (
+    /^(?:yes|y(?:es|eah|ep)|ok(?:ay)?|theek(?:\s+hai)?|thik(?:\s+hai)?|haan|han|ji+\.?|hmm+\s+ok|confirm(?:ed)?|done|sahi(?:\s+hai)?|correct|go\s+ahead|proceed|sure|bilkul|agreed|accept|update(?:\s+it)?|kr(?:\s+do|do)|kar(?:\s+do|do)|krdo|kardo|update\s+kr(?:\s+do|do)|update\s+kar(?:\s+do|do))[\s.!]*$/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  if (t.length <= 40 && USER_ORDER_COMMIT_RE.test(t)) return true;
+  return false;
+}
+
+/** Customer explicitly said they want to order (not only browsing). */
+export function customerCommittedToOrderInThread(
+  history: ConversationTurn[],
+  userText: string
+): boolean {
+  return userMessageTexts(history, userText).some(isOrderLikeUserMessage);
+}
+
 function isOrderLikeUserMessage(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
   if (USER_ORDER_COMMIT_RE.test(t)) return true;
   if (USER_ORDERISH_RE.test(t)) return true;
-  if (/\b\d{1,4}\s+(?:x\s*)?[\w-]+/i.test(t) && /\b(?:and|&|,)\b/i.test(t)) {
+  if (USER_ORDERISH_ROMAN_URDU_RE.test(t)) return true;
+  if (/\b\d{1,4}\s+(?:x\s*)?[\w-]+/i.test(t) && /\b(?:and|&|,|aur)\b/i.test(t)) {
     return true;
   }
   if (
-    /\b(?:one|two|three|four|five|\d+)\s+[\w-]+/i.test(t) &&
-    /\band\b/i.test(t)
+    /\b(?:one|two|three|four|five|ek|ak|aik|\d+)\s+[\w-]+/i.test(t) &&
+    /\b(?:and|&|aur)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (
+    /\b(?:chahiye|chiya|chiye|lena|order)\b/i.test(t) &&
+    /\b(?:shirt|pant|pants|dress|shoe|bra|top|kameez|shalwar)\b/i.test(t)
   ) {
     return true;
   }
@@ -308,12 +991,20 @@ export function orderIntentsFromConversation(params: {
   products: CatalogProduct[];
 }): ThreadOrderIntent[] {
   const byProduct = new Map<number, ThreadOrderIntent>();
+  const scannedTexts = messagesForOrderIntentScan({
+    history: params.history,
+    userText: params.userText,
+    products: params.products,
+  });
 
-  for (const text of userMessageTexts(params.history, params.userText)) {
+  for (const text of scannedTexts) {
     const ids = findProductIdsMentionedInText(text, params.products);
     if (!ids.length) continue;
     const include =
-      ids.length >= 2 || isOrderLikeUserMessage(text);
+      ids.length >= 2 ||
+      isOrderLikeUserMessage(text) ||
+      isOrderModificationMessage(text) ||
+      USER_ORDERISH_ROMAN_URDU_RE.test(text);
     if (!include) continue;
 
     const lower = text.toLowerCase();
@@ -329,24 +1020,26 @@ export function orderIntentsFromConversation(params: {
     }
   }
 
-  // e.g. "biryani" then "burger" in separate messages before address
-  const recentMsgs = userMessageTexts(params.history, params.userText).slice(-6);
+  const recentMsgs = scannedTexts.slice(-6);
   if (recentMsgs.length >= 2) {
     const recentBlock = recentMsgs.join("\n");
-    const recentIds = findProductIdsMentionedInText(
-      recentBlock,
-      params.products
-    );
-    if (recentIds.length >= 2) {
+    const recentIds = findProductIdsMentionedInText(recentBlock, params.products);
+    const multiProductOrder =
+      recentIds.length >= 2 &&
+      (/\b(?:and|&|aur)\b/i.test(recentBlock) ||
+        recentMsgs.some(
+          (m) =>
+            isOrderLikeUserMessage(m) &&
+            findProductIdsMentionedInText(m, params.products).length >= 2
+        ));
+    if (multiProductOrder) {
       const lower = recentBlock.toLowerCase();
       for (const productId of recentIds) {
         if (byProduct.has(productId)) continue;
         const p = params.products.find((x) => x.id === productId);
         byProduct.set(productId, {
           productId,
-          quantity: p
-            ? quantityForProductInText(lower, p.productName)
-            : 1,
+          quantity: p ? quantityForProductInText(lower, p.productName) : 1,
         });
       }
     }
@@ -392,53 +1085,60 @@ export function resolveCheckoutOrderIntents(
   },
   defaultUnitPrice: (productId: number) => number
 ): WhatsAppOrderIntentLine[] {
+  if (fromFooters.length === 0 && !isActiveOrderMessage(params.userText)) {
+    return [];
+  }
+
+  if (fromFooters.length > 0) {
+    return fromFooters.map((line) => ({
+      ...line,
+      unitPrice:
+        Number.isFinite(line.unitPrice) && line.unitPrice > 0
+          ? line.unitPrice
+          : defaultUnitPrice(line.productId),
+    }));
+  }
+
+  // Do not guess cart from chat when the model did not emit order footers/JSON.
+  if (!isActiveOrderMessage(params.userText)) {
+    return [];
+  }
+
   const threadLines = orderIntentsFromConversation({
     history: params.history,
     userText: params.userText,
     products: params.products,
   });
 
-  let lines = mergeWhatsAppOrderIntents(
-    fromFooters,
-    threadLines,
+  if (threadLines.length > 0) {
+    return mergeWhatsAppOrderIntents([], threadLines, defaultUnitPrice);
+  }
+
+  const fromConfirm = orderIntentsFromAssistantConfirmation(
+    params.visibleText,
+    params.products,
     defaultUnitPrice
   );
-
-  if (fromFooters.length === 0 && threadLines.length > 0) {
-    return lines;
+  if (fromConfirm.length > 0) {
+    return fromConfirm;
   }
 
-  const extraIds = new Set<number>();
-  for (const text of userMessageTexts(params.history, params.userText)) {
-    const found = findProductIdsMentionedInText(text, params.products);
-    if (found.length >= 2) {
-      for (const id of found) extraIds.add(id);
-    }
-  }
-  if (fromFooters.length > 0) {
-    for (const id of findProductIdsMentionedInText(
-      params.visibleText,
-      params.products
-    )) {
-      extraIds.add(id);
-    }
-  }
-
-  if (extraIds.size > 0) {
-    lines = mergeWhatsAppOrderIntents(
-      lines,
-      [...extraIds].map((productId) => {
-        const fromThread = threadLines.find((t) => t.productId === productId);
-        return {
-          productId,
-          quantity: fromThread?.quantity ?? 1,
-        };
-      }),
-      defaultUnitPrice
-    );
+  const pid = primaryProductIdFromThread(
+    params.history,
+    params.userText,
+    params.products
+  );
+  if (pid != null) {
+    return [
+      {
+        productId: pid,
+        quantity: 1,
+        unitPrice: defaultUnitPrice(pid),
+      },
+    ];
   }
 
-  return lines;
+  return [];
 }
 
 /** Last product the customer talked about buying. */
@@ -478,9 +1178,12 @@ export function detectConversationStage(params: {
     (USER_ORDER_COMMIT_RE.test(context) ||
       /\b(address|deliver|quantity|qty|color|variant|price)\b/i.test(context));
 
+  const askedForAddress = assistantAskedForAddress(params.history);
+
   if (
-    looksLikeDeliveryAddress(user) &&
-    assistantAskedForAddress(params.history) &&
+    looksLikeDeliveryAddress(user, { assistantAskedForAddress: askedForAddress }) &&
+    askedForAddress &&
+    customerCommittedToOrderInThread(params.history, user) &&
     primaryProductIdFromThread(params.history, user, params.products) != null
   ) {
     return "delivery_address_received";
@@ -493,7 +1196,7 @@ export function detectConversationStage(params: {
   if (
     USER_ORDER_COMMIT_RE.test(user) &&
     findProductIdsMentionedInText(user, params.products).length > 0 &&
-    !looksLikeDeliveryAddress(user)
+    !looksLikeDeliveryAddress(user, { assistantAskedForAddress: askedForAddress })
   ) {
     return "order_just_confirmed";
   }
@@ -514,9 +1217,8 @@ export function conversationStageSystemHint(
     case "delivery_address_received":
       return (
         "CONVERSATION STAGE (customer sent delivery address): Thank them and confirm the order clearly. " +
-        "For ONE item end with [[ORDER:productId,qty,unitPrice]]. For MULTIPLE items in the same checkout use " +
-        "[[ORDERS:id,qty,unitPrice;id,qty,unitPrice]] for multiple items (semicolon between items, or comma: id,qty,price,id,qty,price). " +
-        "Use the customer/promo price from the catalog, or the bargain floor if you already agreed a lower price after the customer bargained. " +
+        "End with [[ORDER_JSON:{\"items\":[{\"productId\":ID,\"qty\":1,\"unitPrice\":PRICE,\"size\":\"Large\"}],\"address\":\"full address\"}]]. " +
+        "Include ONLY items they are buying now — not products from old browsing. " +
         "Also end with [[PRODUCT_IDS:]] (no photos)."
       );
     case "order_just_confirmed":
@@ -529,9 +1231,7 @@ export function conversationStageSystemHint(
       return (
         "CONVERSATION STAGE (customer is wrapping up after shopping): Thank them warmly. " +
         "Briefly mention 1–2 OTHER items they have not bought yet" +
-        (otherNames.length
-          ? ` (e.g. from: ${otherNames.join(", ")})`
-          : "") +
+        (otherNames.length ? ` (e.g. from: ${otherNames.join(", ")})` : "") +
         ". Keep it light — one short upsell sentence. " +
         "Only put IDs in [[PRODUCT_IDS:…]] for those other items if you name them; never resend photos of what they already ordered."
       );
@@ -540,10 +1240,6 @@ export function conversationStageSystemHint(
   }
 }
 
-/**
- * Keep only product IDs that match what the customer is discussing,
- * so WhatsApp does not attach the wrong product's photos.
- */
 export function sanitizeOutboundProductIds(params: {
   modelIds: number[];
   visibleText: string;
@@ -551,26 +1247,28 @@ export function sanitizeOutboundProductIds(params: {
   products: CatalogProduct[];
   stage: WhatsAppConversationStage;
   history?: ConversationTurn[];
+  photoIntent?: CustomerPhotoIntent | null;
 }): number[] {
   const { stage, products, userText, visibleText } = params;
   const modelIds = [...new Set(params.modelIds)].filter((id) =>
     products.some((p) => p.id === id)
   );
 
-  if (
-    stage === "order_just_confirmed" ||
-    stage === "delivery_address_received"
-  ) {
+  if (stage === "order_just_confirmed" || stage === "delivery_address_received") {
     return [];
   }
 
+  const intent = params.photoIntent;
+  const wantsPhotos = intent?.wantsPhotos ?? false;
+  const showAllCatalog = intent?.showAllCatalog ?? false;
+  const explicitPhoto = intent?.explicitRequest ?? false;
+  const intentProductIds = (intent?.productIds ?? []).filter((id) =>
+    products.some((p) => p.id === id)
+  );
+
   const inUser = findProductIdsMentionedInText(userText, products);
   const inReply = findProductIdsMentionedInText(visibleText, products);
-  const alreadySent = productIdsWithPhotosAlreadySent(
-    params.history ?? [],
-    products
-  );
-  const wantsPhotos = customerWantsProductPhotos(userText);
+  const alreadySent = productIdsWithPhotosAlreadySent(params.history ?? [], products);
 
   if (stage === "post_purchase_close") {
     const upsell = inReply.filter((id) => !alreadySent.has(id));
@@ -578,42 +1276,34 @@ export function sanitizeOutboundProductIds(params: {
     return modelIds.filter((id) => !inUser.includes(id) && !alreadySent.has(id)).slice(0, 3);
   }
 
-  if (isCatalogBrowseIntent(userText)) {
-    let ids = inUser.length
-      ? inUser
-      : modelIds.length
-        ? modelIds
-        : products.map((p) => p.id);
-    if (!wantsPhotos) {
-      ids = ids.filter((id) => !alreadySent.has(id));
-    }
+  if (showAllCatalog || isCatalogBrowseIntent(userText)) {
+    let ids = intentProductIds.length
+      ? intentProductIds
+      : inUser.length
+        ? inUser
+        : modelIds.length
+          ? modelIds
+          : products.map((p) => p.id);
+    if (!explicitPhoto) ids = ids.filter((id) => !alreadySent.has(id));
     return ids.slice(0, 3);
   }
 
-  if (inUser.length === 0) {
-    return [];
-  }
+  if (!wantsPhotos && inUser.length === 0) return [];
 
-  let ids = inUser;
+  let ids = intentProductIds.length ? intentProductIds : inUser;
   if (modelIds.length) {
-    const overlap = modelIds.filter((id) => inUser.includes(id));
+    const overlap = modelIds.filter((id) => ids.includes(id));
     if (overlap.length) ids = overlap;
+    else if (wantsPhotos && intentProductIds.length === 0) ids = modelIds;
   } else {
-    const replyOverlap = inReply.filter((id) => inUser.includes(id));
+    const replyOverlap = inReply.filter((id) => ids.includes(id));
     if (replyOverlap.length) ids = replyOverlap;
   }
 
-  if (!wantsPhotos) {
-    ids = ids.filter((id) => !alreadySent.has(id));
-  }
-
+  if (!explicitPhoto) ids = ids.filter((id) => !alreadySent.has(id));
   return ids.slice(0, 3);
 }
 
-/**
- * Server-side product IDs to send photos when the model omits [[PRODUCT_IDS:…]]
- * (common with short token limits).
- */
 export function resolveOutboundProductIdsForPhotos(params: {
   modelIds: number[];
   visibleText: string;
@@ -621,25 +1311,79 @@ export function resolveOutboundProductIdsForPhotos(params: {
   products: CatalogProduct[];
   stage: WhatsAppConversationStage;
   history?: ConversationTurn[];
+  alreadySent?: Set<number>;
+  photoIntent?: CustomerPhotoIntent | null;
 }): number[] {
-  const { userText, products, history } = params;
-  const wantsPhotos = customerWantsProductPhotos(userText);
+  const { userText, products, history, stage } = params;
+  const alreadySent = new Set([
+    ...productIdsWithPhotosAlreadySent(history ?? [], products),
+    ...(params.alreadySent ?? []),
+  ]);
 
-  // Explicit photo/menu request: match THIS message only (never older thread items).
-  if (wantsPhotos) {
-    const photoIds = productIdsFromPhotoRequest(userText, products);
-    if (photoIds.length) return photoIds.slice(0, 3);
-    if (isCatalogBrowseIntent(userText)) {
-      return products.slice(0, 3).map((p) => p.id);
-    }
+  if (stage === "order_just_confirmed" || stage === "delivery_address_received") {
     return [];
   }
 
-  const sanitized = sanitizeOutboundProductIds(params);
-  if (sanitized.length > 0) return sanitized;
+  const intent = params.photoIntent;
+  const wantsPhotos = intent?.wantsPhotos ?? false;
+  const showAllCatalog = intent?.showAllCatalog ?? false;
+  const explicitPhoto = intent?.explicitRequest ?? false;
+  const intentProductIds = (intent?.productIds ?? []).filter((id) =>
+    products.some((p) => p.id === id)
+  );
 
-  // Auto-send once when the customer first names a product (this turn only).
-  const alreadySent = productIdsWithPhotosAlreadySent(history ?? [], products);
-  const inUser = findProductIdsMentionedInText(userText, products);
-  return inUser.filter((id) => !alreadySent.has(id)).slice(0, 3);
+  const modelIds = [...new Set(params.modelIds)].filter((id) =>
+    products.some((p) => p.id === id)
+  );
+
+  const idsForIntent = (ids: number[]): number[] => {
+    if (intentProductIds.length === 0) return ids;
+    const overlap = ids.filter((id) => intentProductIds.includes(id));
+    return overlap.length ? overlap : intentProductIds;
+  };
+
+  if (modelIds.length > 0) {
+    const ids = idsForIntent(modelIds);
+    if (explicitPhoto || wantsPhotos) {
+      return explicitPhoto ? ids.slice(0, 3) : ids.filter((id) => !alreadySent.has(id)).slice(0, 3);
+    }
+    return ids.filter((id) => !alreadySent.has(id)).slice(0, 3);
+  }
+
+  if (wantsPhotos || showAllCatalog) {
+    if (intentProductIds.length) {
+      return explicitPhoto
+        ? intentProductIds.slice(0, 3)
+        : intentProductIds.filter((id) => !alreadySent.has(id)).slice(0, 3);
+    }
+    if (showAllCatalog || isCatalogBrowseIntent(userText)) {
+      return products
+        .filter((p) => explicitPhoto || !alreadySent.has(p.id))
+        .slice(0, 3)
+        .map((p) => p.id);
+    }
+  }
+
+  if (isCatalogBrowseIntent(userText)) {
+    const ids = products.filter((p) => !alreadySent.has(p.id)).slice(0, 3).map((p) => p.id);
+    return ids;
+  }
+
+  if (!wantsPhotos) return [];
+
+  let mentionedNow = intentProductIds;
+  if (mentionedNow.length === 0) {
+    mentionedNow = findProductIdsMentionedInText(userText, products);
+  }
+  if (mentionedNow.length === 0) {
+    const categories = categoriesMentionedInUserText(userText);
+    if (categories.length > 0) {
+      mentionedNow = products
+        .filter((p) => productMatchesUserCategories(p, categories))
+        .map((p) => p.id);
+    }
+  }
+
+  if (explicitPhoto) return mentionedNow.slice(0, 3);
+  return mentionedNow.filter((id) => !alreadySent.has(id)).slice(0, 3);
 }

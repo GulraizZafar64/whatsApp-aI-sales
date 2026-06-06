@@ -1,33 +1,9 @@
-import { findBusinessByPhoneNumberId } from "@/lib/business-lookup";
 import type { Business } from "@/lib/models";
 
-/** WhatsApp Cloud API token for this business (saved at Meta login). */
-export function resolveWhatsAppAccessToken(
+export function businessWhatsAppReady(
   business: Business | null | undefined
-): string {
-  return business?.whatsappToken?.trim() ?? "";
-}
-
-/** Load business row and its Meta token by webhook/dashboard `phone_number_id`. */
-export async function loadBusinessWhatsAppToken(
-  phoneNumberId: string
-): Promise<{ business: Business; token: string } | null> {
-  const business = await findBusinessByPhoneNumberId(phoneNumberId);
-  if (!business) return null;
-  const token = resolveWhatsAppAccessToken(business);
-  if (!token) return null;
-  return { business, token };
-}
-
-export function requireWhatsAppAccessTokenForBusiness(
-  business: Business
-): string | null {
-  const token = resolveWhatsAppAccessToken(business);
-  return token || null;
-}
-
-export function businessHasWhatsAppToken(business: Business | null | undefined): boolean {
-  return Boolean(resolveWhatsAppAccessToken(business));
+): boolean {
+  return business?.waStatus === "ready";
 }
 
 export function resolveAnthropicApiKey(business?: Business | null): string {
