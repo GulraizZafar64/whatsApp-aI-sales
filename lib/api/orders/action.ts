@@ -10,7 +10,6 @@ import {
 } from "@/lib/order-requirements";
 import {
   actionTypeForOwnerStatusChange,
-  customerMessageForOwnerStatusChange,
   ownerRespondToCancellation,
   transitionOrderGroup,
 } from "@/lib/order-management";
@@ -163,11 +162,6 @@ export async function PATCH(request: Request) {
       nextStatus,
       accept
     );
-    const customerMessage = customerMessageForOwnerStatusChange(
-      nextStatus,
-      accept
-    );
-
     const result = await transitionOrderGroup({
       businessId,
       orderGroupId: resolvedGroupId,
@@ -176,9 +170,8 @@ export async function PATCH(request: Request) {
       actionType,
       performedBy: "owner",
       performedByUserId: gate.userId,
-      notifyCustomer: Boolean(customerMessage),
-      customerMessage,
-      notifyOwnerEmail: true,
+      notifyCustomer: false,
+      notifyOwnerEmail: false,
       notes: accept ? "Order accepted from dashboard." : undefined,
     });
 

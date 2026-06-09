@@ -16,6 +16,8 @@ export const DEFAULT_ORDER_REQUIREMENTS: OrderRequirements = {
   requireOrderPayment: false,
 };
 
+import { businessTypeKind } from "@/lib/business-type";
+
 export function parseOrderRequirements(stored: unknown): OrderRequirements {
   const base = { ...DEFAULT_ORDER_REQUIREMENTS };
   if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
@@ -38,6 +40,53 @@ export function parseOrderRequirements(stored: unknown): OrderRequirements {
     base.deliveryChargeAmount = null;
   }
   return base;
+}
+
+/** Owner checkout settings adjusted for business type (e.g. lead gen skips address). */
+export function effectiveOrderRequirements(business: {
+  orderRequirements?: unknown;
+  businessType?: string | null;
+}): OrderRequirements {
+  const req = parseOrderRequirements(business.orderRequirements);
+  const kind = businessTypeKind(business.businessType);
+  if (kind === "lead") {
+    return {
+      ...req,
+      requireAddress: false,
+      requireDeliveryCharges: false,
+      requireOrderPayment: false,
+    };
+  }
+  if (kind === "booking" || kind === "digital") {
+    return { ...req, requireAddress: false };
+  }
+  return req;
+}
+
+/** Human-readable checkout mode for AI system prompts. */
+export function checkoutSettingsLabel(req: OrderRequirements): string {
+  if (!req.requireAddress && !req.requireDeliveryCharges && !req.requireOrderPayment) {
+    return "No physical delivery — collect business-type fields only";
+  }
+  if (req.requireAddress && req.requireOrderPayment) {
+    return "Delivery Address + Full Payment";
+  }
+  if (req.requireAddress && req.requireDeliveryCharges) {
+    const amt = req.deliveryChargeAmount?.trim();
+    return amt
+      ? `Delivery Address + Delivery Charges (${amt})`
+      : "Delivery Address + Delivery Charges";
+  }
+  if (req.requireAddress) {
+    return "Delivery Address Only";
+  }
+  if (req.requireOrderPayment) {
+    return "Full Payment (no address required)";
+  }
+  if (req.requireDeliveryCharges) {
+    return "Delivery Charges + payment proof";
+  }
+  return "Standard checkout";
 }
 
 /** Canonical order statuses stored in `completed_orders.status`. */

@@ -9,12 +9,12 @@ import {
   fetchCustomerOrderSummaries,
 } from "@/lib/customer-order-status";
 import {
-  parseOrderRequirements,
+  effectiveOrderRequirements,
   type OrderRequirements,
   type OrderStatus,
 } from "@/lib/order-requirements";
 import {
-  customerCommittedToOrderInThread,
+  customerExplicitOrderCommit,
   extractDeliveryAddressFromAssistantText,
   findDeliveryAddressInConversation,
   findProductIdsMentionedInText,
@@ -35,7 +35,8 @@ import {
   type WhatsAppConversationStage,
 } from "@/lib/whatsapp-catalog-match";
 import type { ConversationTurn } from "@/lib/claude-generate";
-import { ORDER_JSON_AI_HINT } from "@/lib/claude-generate";
+import { ORDER_EVENT_AI_HINT } from "@/lib/order-ai-events";
+import type { ParsedOrderAiEvent } from "@/lib/order-ai-events";
 import {
   placeWhatsAppCompletedOrders,
   syncPendingOrderGroup,
@@ -63,7 +64,7 @@ export type CheckoutCartLine = {
 export function businessOrderRequirements(
   business: Business
 ): OrderRequirements {
-  return parseOrderRequirements(business.orderRequirements);
+  return effectiveOrderRequirements(business);
 }
 
 function truncateProof(dataUrl: string | null | undefined): string | null {
@@ -211,17 +212,19 @@ export function checkoutRequirementsMet(
 export function orderRequirementsSystemHint(req: OrderRequirements): string {
   const parts: string[] = [
     "ORDER CHECKOUT (owner settings — mandatory):",
-    "- Only treat checkout as started when the customer clearly says they want to ORDER / confirm / buy (not just asking price).",
-    "- If they already have a PENDING order and say add / one more / extra (e.g. add 1 more pant), update that same order with new quantities using [[ORDER:…]] or [[ORDERS:…]] — do NOT start a new order.",
+    "- Only treat checkout as started when the customer clearly says they want to ORDER / confirm / buy (not just asking price or saying chahiye/chiya).",
+    "- NEVER say the order is submitted or in the dashboard until you have: (1) confirmed product, size, qty, price, (2) received full delivery address, (3) customer said yes/ok/confirm or sent address after you asked.",
+    "- If they already have a PENDING order and want to CHANGE it (add/remove/size/address), emit [[ORDER_EVENT:{\"event\":\"order_update\",...}]].",
+    "- If they want a completely NEW separate order while one is pending, emit [[ORDER_EVENT:{\"event\":\"order_create\",...}]] — creates a new order in the dashboard.",
     "- If their last order is already ACCEPTED or DISPATCHED, a new order is a separate checkout.",
-    "- ORDER UPDATE (pending only): Show current order, ask what to change. Collect ALL details (size, qty, address). Do NOT save until customer confirms (yes/ok/theek hai). Then emit [[ORDER_JSON:…]] with the FINAL cart only (swap = replace old item, not add both) and [[ORDER_UPDATE_CONFIRMED]] on the last line.",
+    "- ORDER UPDATE (pending only): Show current order, ask what to change. Collect ALL details (size, qty, address). Do NOT save until customer confirms (yes/ok/theek hai). Then emit [[ORDER_EVENT:{\"event\":\"order_update\",...}]] with the FINAL cart only.",
     "- SWAP: 'shirt ki jaga shoes' means REPLACE shirt with shoes — final order must have shoes only, not shirt + shoes.",
     "- If status is ACCEPTED, DISPATCHED, COMPLETE, CANCELLED, or REJECTED — do NOT update that order. Tell status and offer a NEW order.",
-    "- STATUS ONLY: If customer only asks order status / mera order kya hua — answer status only. Never use [[ORDER:…]] or [[ORDERS:…]].",
+    "- STATUS ONLY: If customer only asks order status — answer from database and emit [[ORDER_EVENT:{\"event\":\"order_status\"}]].",
   ];
   if (req.requireAddress) {
     parts.push(
-      "- Ask for full delivery address before the order is logged. Do NOT use [[ORDER:…]] until address is received."
+      "- Ask for full delivery address before the order is logged. Do NOT emit order_create until address is received."
     );
   }
   if (req.requireDeliveryCharges) {
@@ -238,11 +241,13 @@ export function orderRequirementsSystemHint(req: OrderRequirements): string {
     );
   }
   if (!req.requireAddress && !req.requireDeliveryCharges && !req.requireOrderPayment) {
-    parts.push("- When the customer commits to order, confirm items and use [[ORDER:…]] or [[ORDERS:…]].");
+    parts.push(
+      "- No delivery address or payment proof required — collect lead/booking fields per BUSINESS TYPE, then [[ORDER_EVENT:{\"event\":\"order_create\",...}]] after customer confirms."
+    );
   } else {
     parts.push("- Until all required steps above are done, do NOT say the order is in the dashboard. End with [[PRODUCT_IDS:]] only.");
   }
-  parts.push(ORDER_JSON_AI_HINT);
+  parts.push(ORDER_EVENT_AI_HINT);
   return parts.join("\n");
 }
 
@@ -415,13 +420,51 @@ function customerCommittedThisTurnOnly(params: {
   alreadyPlaced: boolean;
 }): boolean {
   if (params.alreadyPlaced) {
-    return params.stage === "order_just_confirmed";
+    return (
+      params.stage === "order_just_confirmed" ||
+      isOrderModificationMessage(params.userText) ||
+      isOrderItemRemovalMessage(params.userText)
+    );
   }
-  if (params.stage === "order_just_confirmed") return true;
-  return customerCommittedToOrderInThread(
-    params.history.slice(-6),
-    params.userText
-  );
+  if (params.stage === "delivery_address_received") return true;
+  if (customerExplicitOrderCommit(params.userText)) return true;
+  return false;
+}
+
+function hasValidDeliveryAddress(
+  address: string | null | undefined,
+  assistantAskedForAddress: boolean
+): boolean {
+  const trimmed = address?.trim() ?? "";
+  if (trimmed.length < 8) return false;
+  return looksLikeDeliveryAddress(trimmed, { assistantAskedForAddress });
+}
+
+/** New order — never save without a real address + explicit finalize signal. */
+function canFinalizeNewOrderPlacement(params: {
+  userText: string;
+  stage: WhatsAppConversationStage;
+  sessionAddress: string | null;
+  aiStructuredAddress: string | null;
+  hasAuthoritativeOrderJson: boolean;
+  assistantAskedForAddress: boolean;
+}): boolean {
+  const address =
+    params.aiStructuredAddress?.trim() ||
+    params.sessionAddress?.trim() ||
+    "";
+  if (!hasValidDeliveryAddress(address, params.assistantAskedForAddress)) {
+    return false;
+  }
+  if (
+    params.hasAuthoritativeOrderJson &&
+    hasValidDeliveryAddress(params.aiStructuredAddress, params.assistantAskedForAddress)
+  ) {
+    return true;
+  }
+  if (params.stage === "delivery_address_received") return true;
+  if (customerExplicitOrderCommit(params.userText)) return true;
+  return false;
 }
 
 async function loadPendingDeliveryNote(
@@ -568,8 +611,10 @@ export async function handleOrderCheckoutTurn(params: {
    * and explicitly confirmed it. Only then do we write the update to DB.
    */
   orderUpdateConfirmed?: boolean;
-  /** Authoritative address from [[ORDER_JSON:…]] — overrides chat heuristics. */
+  /** Authoritative address from [[ORDER_EVENT:…]] / [[ORDER_JSON:…]] — overrides chat heuristics. */
   aiStructuredAddress?: string | null;
+  /** AI event — only this triggers DB create/update (not chat heuristics alone). */
+  orderEvent?: ParsedOrderAiEvent | null;
 }): Promise<{ placed: boolean; orderGroupId?: string; updated?: boolean }> {
   if (shouldSkipOrderCheckoutForMessage(params.userText)) {
     return { placed: false };
@@ -577,13 +622,15 @@ export async function handleOrderCheckoutTurn(params: {
 
   const customerConfirmedUpdate = isCustomerOrderUpdateConfirmation(params.userText);
   const updateConfirmed =
-    params.orderUpdateConfirmed === true || customerConfirmedUpdate;
+    params.orderEvent?.event === "order_update" ||
+    params.orderUpdateConfirmed === true ||
+    customerConfirmedUpdate;
 
   const req = businessOrderRequirements(params.business);
-  const session = await getOrCreateSession(params.business.id, params.customerWaId);
+  let session = await getOrCreateSession(params.business.id, params.customerWaId);
 
   let cart = parseCart(session.cartJson);
-  const alreadyPlaced = Boolean(session.placedAt);
+  let alreadyPlaced = Boolean(session.placedAt);
 
   const isUpdateRequest = isOrderUpdateRequest(params.userText);
   const isModification = isOrderModificationMessage(params.userText);
@@ -607,6 +654,38 @@ export async function handleOrderCheckoutTurn(params: {
   });
 
   let hasModelOrderLines = orderIntents.length > 0;
+
+  if (
+    params.orderEvent &&
+    (params.orderEvent.event === "order_create" ||
+      params.orderEvent.event === "order_update") &&
+    params.orderEvent.items.length
+  ) {
+    orderIntents = params.orderEvent.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      lineLabel: item.size,
+    }));
+    hasModelOrderLines = true;
+  }
+
+  if (params.orderEvent?.event === "order_create" && params.orderEvent.items.length > 0) {
+    const pendingId = await latestPendingOrderGroupId(
+      params.business.id,
+      params.customerWaId
+    );
+    if (pendingId || session.placedAt) {
+      await resetCheckoutSession(session);
+      await session.reload();
+      cart = [];
+      alreadyPlaced = false;
+      console.log(
+        "[order-checkout] order_create — new order separate from pending",
+        pendingId ?? ""
+      );
+    }
+  }
 
   const startingNewOrder = userCommittedThisTurn || hasModelOrderLines || isModification;
 
@@ -655,7 +734,12 @@ export async function handleOrderCheckoutTurn(params: {
           status: "pending",
         },
       });
-      if (existing > 0 && !startingNewOrder && !updateConfirmed) {
+      if (
+        existing > 0 &&
+        !startingNewOrder &&
+        !updateConfirmed &&
+        params.orderEvent?.event !== "order_create"
+      ) {
         return { placed: false };
       }
     } else if (!startingNewOrder) {
@@ -663,7 +747,12 @@ export async function handleOrderCheckoutTurn(params: {
     }
   }
 
-  if (userCommittedThisTurn || hasModelOrderLines) {
+  if (
+    userCommittedThisTurn ||
+    (hasModelOrderLines && Boolean(params.aiStructuredAddress?.trim())) ||
+    params.orderEvent?.event === "order_create" ||
+    params.orderEvent?.event === "order_update"
+  ) {
     await session.update({ committed: true });
     session.committed = true;
   }
@@ -676,7 +765,7 @@ export async function handleOrderCheckoutTurn(params: {
       params.customerWaId,
       pendingGroupId
     );
-  } else if (session.placedAt) {
+  } else if (session.placedAt && params.orderEvent?.event !== "order_create") {
     pendingGroupId = await latestPendingOrderGroupId(params.business.id, params.customerWaId);
     if (pendingGroupId) {
       pendingGroupStatus = await getOrderGroupStatus(
@@ -699,7 +788,8 @@ export async function handleOrderCheckoutTurn(params: {
     hasModelOrderLines &&
     !updateConfirmed &&
     !isModification &&
-    !isItemRemoval
+    !isItemRemoval &&
+    params.orderEvent?.event !== "order_create"
   ) {
     orderIntents = [];
     hasModelOrderLines = false;
@@ -846,6 +936,7 @@ export async function handleOrderCheckoutTurn(params: {
    * it only starts the 2-step conversation.
    */
   if (
+    params.orderEvent?.event === "order_update" &&
     session.placedAt &&
     pendingGroupId &&
     pendingGroupStatus === "pending" &&
@@ -1037,13 +1128,47 @@ export async function handleOrderCheckoutTurn(params: {
   }
 
   const readyByRequirements = checkoutRequirementsMet(session, cart, req);
-  const readyWithModelFooter =
-    hasModelOrderLines &&
-    cart.length > 0 &&
-    session.committed &&
-    (!req.requireAddress || Boolean(session.deliveryAddress?.trim()));
+  const hasAuthoritativeOrderJson = Boolean(params.aiStructuredAddress?.trim());
 
-  if (!readyByRequirements && !readyWithModelFooter) return { placed: false };
+  if (
+    !params.orderEvent ||
+    (params.orderEvent.event !== "order_create" &&
+      params.orderEvent.event !== "order_update")
+  ) {
+    if (cart.length > 0 && session.committed) {
+      console.log(
+        "[order-checkout] holding order — waiting for ORDER_EVENT from AI (order_create/order_update)"
+      );
+    }
+    return { placed: false };
+  }
+
+  if (
+    params.orderEvent.event === "order_update" &&
+    !updateConfirmed &&
+    !existingPendingOrder
+  ) {
+    console.log("[order-checkout] order_update event ignored — no pending order");
+    return { placed: false };
+  }
+
+  const canPlace = canFinalizeNewOrderPlacement({
+    userText: params.userText,
+    stage: params.stage,
+    sessionAddress: session.deliveryAddress,
+    aiStructuredAddress: structuredAddress,
+    hasAuthoritativeOrderJson,
+    assistantAskedForAddress: assistantAsked,
+  });
+
+  if (!readyByRequirements || !canPlace) {
+    if (cart.length > 0 && session.committed) {
+      console.log(
+        "[order-checkout] holding order — need valid address and customer confirm before save"
+      );
+    }
+    return { placed: false };
+  }
 
   if (req.requireAddress && !session.deliveryAddress?.trim()) {
     console.log("[order-checkout] address required but not yet received — holding order");
@@ -1054,8 +1179,16 @@ export async function handleOrderCheckoutTurn(params: {
     structuredAddress ||
     session.deliveryAddress?.trim() ||
     effectiveResolvedAddress ||
-    (req.requireAddress ? null : params.userText.trim().slice(0, 2000)) ||
     null;
+
+  if (!deliveryNote || !hasValidDeliveryAddress(deliveryNote, assistantAsked)) {
+    console.log("[order-checkout] no valid delivery address — holding order");
+    return { placed: false };
+  }
+
+  if (params.orderEvent.event !== "order_create") {
+    return { placed: false };
+  }
 
   const orderGroupId = randomUUID();
   const intents = cartToIntents(cart, deliveryNote);

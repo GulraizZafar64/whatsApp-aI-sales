@@ -447,10 +447,23 @@ export function looksLikeDeliveryAddress(
 
   if (hasAddressMarkers(t)) return true;
 
+  // Place-name replies after address ask (e.g. "Skardu igrod valley", "Lahore DHA Phase 5").
+  if (options?.assistantAskedForAddress) {
+    const words = t.split(/\s+/).filter(Boolean);
+    if (
+      words.length >= 2 &&
+      words.length <= 14 &&
+      t.length >= 8 &&
+      /^[a-z0-9\s,.\-#'"/]+$/i.test(t) &&
+      !ORDER_OR_PRICE_IN_ADDRESS_RE.test(t)
+    ) {
+      return true;
+    }
+  }
+
   // Long free-form address without explicit markers (e.g. full street paragraph).
   if (t.length >= 60 && /^[a-z0-9\s,.\-#'"/]+$/i.test(t)) return true;
 
-  void options;
   return false;
 }
 
@@ -506,16 +519,27 @@ export function orderIntentsFromAssistantConfirmation(
     const bullet = /^[-•*]\s*/.exec(line);
     const body = bullet ? line.slice(bullet[0].length) : line;
 
-    const qtyMatch = /^(\d+)\s+(.+)$/.exec(body);
+    const qtyMatch =
+      /^(\d+)\s*[x×X]\s*(.+)$/.exec(body) ||
+      /^(\d+)\s+(.+)$/.exec(body);
     if (!qtyMatch) continue;
 
     const quantity = Math.max(1, Math.min(10_000, Number.parseInt(qtyMatch[1], 10)));
     let desc = qtyMatch[2]!.trim();
 
-    // Strip price suffix but discard parsed price — always use catalog price
-    const priceMatch = /(?:=|:)\s*([\d.]+)\s*(?:rupees?|rs\.?|pkr)?\s*$/i.exec(desc);
+    // Strip price suffix (Rs 1500, - Rs 1500, = 1500) — always use catalog price
+    const priceMatch =
+      /(?:=|:|-)\s*(?:rs\.?\s*)?([\d.,]+)\s*(?:rupees?|rs\.?|pkr)?\s*$/i.exec(
+        desc
+      );
     if (priceMatch) {
       desc = desc.slice(0, priceMatch.index).trim();
+    }
+
+    const sizeMatch = /\(\s*size\s*([^)]+)\)/i.exec(desc);
+    const sizeLabel = sizeMatch?.[1]?.trim().slice(0, 80);
+    if (sizeMatch) {
+      desc = desc.replace(sizeMatch[0], "").trim();
     }
 
     const ids = findProductIdsMentionedInText(desc, products);
@@ -525,7 +549,12 @@ export function orderIntentsFromAssistantConfirmation(
     seen.add(productId);
 
     const unitPrice = defaultUnitPrice(productId);
-    lines.push({ productId, quantity, unitPrice });
+    lines.push({
+      productId,
+      quantity,
+      unitPrice,
+      ...(sizeLabel ? { lineLabel: sizeLabel } : {}),
+    });
   }
 
   return lines;
@@ -952,32 +981,53 @@ export function isCustomerOrderUpdateConfirmation(text: string): boolean {
   return false;
 }
 
+/**
+ * Customer clearly wants to FINALIZE (not just browsing / "chahiye").
+ * Used before saving to DB — "mujhe shirt chahiye" alone is NOT enough.
+ */
+export function customerExplicitOrderCommit(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (isCustomerOrderUpdateConfirmation(t)) return true;
+  if (USER_ORDER_COMMIT_RE.test(t)) return true;
+  if (
+    /\b(?:order\s+(?:kr(?:o|ni|do|deni|de)|kar(?:o|ni|do|deni|de))|place\s+(?:the\s+)?order|order\s+kr(?:ni|na|do))\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  if (/\b(?:bhej\s+do|send\s+it|confirm\s+order)\b/i.test(t)) return true;
+  if (
+    /\b(?:i\s+)?(?:want|wanna|would like)\s+to\s+(?:place|order|buy)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(?:yes|ok|okay|sure|haan|han|ji)\b.*\b(?:place|order|buy)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
 /** Customer explicitly said they want to order (not only browsing). */
 export function customerCommittedToOrderInThread(
   history: ConversationTurn[],
   userText: string
 ): boolean {
-  return userMessageTexts(history, userText).some(isOrderLikeUserMessage);
+  return userMessageTexts(history, userText).some(customerExplicitOrderCommit);
 }
 
 function isOrderLikeUserMessage(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  if (USER_ORDER_COMMIT_RE.test(t)) return true;
+  if (customerExplicitOrderCommit(t)) return true;
   if (USER_ORDERISH_RE.test(t)) return true;
-  if (USER_ORDERISH_ROMAN_URDU_RE.test(t)) return true;
   if (/\b\d{1,4}\s+(?:x\s*)?[\w-]+/i.test(t) && /\b(?:and|&|,|aur)\b/i.test(t)) {
     return true;
   }
   if (
     /\b(?:one|two|three|four|five|ek|ak|aik|\d+)\s+[\w-]+/i.test(t) &&
     /\b(?:and|&|aur)\b/i.test(t)
-  ) {
-    return true;
-  }
-  if (
-    /\b(?:chahiye|chiya|chiye|lena|order)\b/i.test(t) &&
-    /\b(?:shirt|pant|pants|dress|shoe|bra|top|kameez|shalwar)\b/i.test(t)
   ) {
     return true;
   }
@@ -1002,9 +1052,9 @@ export function orderIntentsFromConversation(params: {
     if (!ids.length) continue;
     const include =
       ids.length >= 2 ||
-      isOrderLikeUserMessage(text) ||
+      customerExplicitOrderCommit(text) ||
       isOrderModificationMessage(text) ||
-      USER_ORDERISH_ROMAN_URDU_RE.test(text);
+      isOrderCartReplacementMessage(text);
     if (!include) continue;
 
     const lower = text.toLowerCase();
@@ -1052,6 +1102,7 @@ export type WhatsAppOrderIntentLine = {
   productId: number;
   quantity: number;
   unitPrice: number;
+  lineLabel?: string;
 };
 
 /** Add missing line items from the chat when the model only footer'd one product. */
@@ -1216,8 +1267,9 @@ export function conversationStageSystemHint(
   switch (stage) {
     case "delivery_address_received":
       return (
-        "CONVERSATION STAGE (customer sent delivery address): Thank them and confirm the order clearly. " +
-        "End with [[ORDER_JSON:{\"items\":[{\"productId\":ID,\"qty\":1,\"unitPrice\":PRICE,\"size\":\"Large\"}],\"address\":\"full address\"}]]. " +
+        "CONVERSATION STAGE (customer sent delivery address): Thank them and confirm the order clearly in the CUSTOMER'S language (English if they write in English). " +
+        "You MUST end with [[ORDER_EVENT:{\"event\":\"order_create\",\"items\":[{\"productId\":ID,\"qty\":1,\"unitPrice\":PRICE,\"size\":\"Large\"}],\"address\":\"full address\"}]]. " +
+        "Without that ORDER_EVENT line the order will NOT appear in the dashboard — never say the order is confirmed unless you include ORDER_EVENT. " +
         "Include ONLY items they are buying now — not products from old browsing. " +
         "Also end with [[PRODUCT_IDS:]] (no photos)."
       );
@@ -1314,7 +1366,7 @@ export function resolveOutboundProductIdsForPhotos(params: {
   alreadySent?: Set<number>;
   photoIntent?: CustomerPhotoIntent | null;
 }): number[] {
-  const { userText, products, history, stage } = params;
+  const { userText, products, history, stage, visibleText } = params;
   const alreadySent = new Set([
     ...productIdsWithPhotosAlreadySent(history ?? [], products),
     ...(params.alreadySent ?? []),
@@ -1325,7 +1377,6 @@ export function resolveOutboundProductIdsForPhotos(params: {
   }
 
   const intent = params.photoIntent;
-  const wantsPhotos = intent?.wantsPhotos ?? false;
   const showAllCatalog = intent?.showAllCatalog ?? false;
   const explicitPhoto = intent?.explicitRequest ?? false;
   const intentProductIds = (intent?.productIds ?? []).filter((id) =>
@@ -1336,54 +1387,47 @@ export function resolveOutboundProductIdsForPhotos(params: {
     products.some((p) => p.id === id)
   );
 
-  const idsForIntent = (ids: number[]): number[] => {
-    if (intentProductIds.length === 0) return ids;
-    const overlap = ids.filter((id) => intentProductIds.includes(id));
-    return overlap.length ? overlap : intentProductIds;
-  };
+  const inUser = findProductIdsMentionedInText(userText, products);
+  const inReply = findProductIdsMentionedInText(visibleText, products);
 
-  if (modelIds.length > 0) {
-    const ids = idsForIntent(modelIds);
-    if (explicitPhoto || wantsPhotos) {
-      return explicitPhoto ? ids.slice(0, 3) : ids.filter((id) => !alreadySent.has(id)).slice(0, 3);
-    }
-    return ids.filter((id) => !alreadySent.has(id)).slice(0, 3);
+  const firstTimeOnly = (ids: number[]): number[] =>
+    ids.filter((id) => !alreadySent.has(id)).slice(0, 3);
+
+  // Explicit "share photo" — resend even if already sent earlier in the chat.
+  if (explicitPhoto) {
+    const ids = intentProductIds.length
+      ? intentProductIds
+      : inUser.length
+        ? inUser
+        : inReply.length
+          ? inReply
+          : modelIds;
+    return ids.slice(0, 3);
   }
 
-  if (wantsPhotos || showAllCatalog) {
-    if (intentProductIds.length) {
-      return explicitPhoto
-        ? intentProductIds.slice(0, 3)
-        : intentProductIds.filter((id) => !alreadySent.has(id)).slice(0, 3);
-    }
-    if (showAllCatalog || isCatalogBrowseIntent(userText)) {
-      return products
-        .filter((p) => explicitPhoto || !alreadySent.has(p.id))
-        .slice(0, 3)
-        .map((p) => p.id);
-    }
+  if (showAllCatalog || isCatalogBrowseIntent(userText)) {
+    const pool = intentProductIds.length
+      ? intentProductIds
+      : inUser.length
+        ? inUser
+        : products.map((p) => p.id);
+    return firstTimeOnly(pool);
   }
 
-  if (isCatalogBrowseIntent(userText)) {
-    const ids = products.filter((p) => !alreadySent.has(p.id)).slice(0, 3).map((p) => p.id);
-    return ids;
+  if (stage === "post_purchase_close") {
+    const upsell = inReply.filter((id) => !alreadySent.has(id));
+    if (upsell.length) return upsell.slice(0, 3);
+    return firstTimeOnly(modelIds.filter((id) => !inUser.includes(id)));
   }
 
-  if (!wantsPhotos) return [];
+  // Customer asked about product(s) this turn — send photo once when AI discusses them.
+  const userProducts = intentProductIds.length ? intentProductIds : inUser;
+  if (userProducts.length === 0) return [];
 
-  let mentionedNow = intentProductIds;
-  if (mentionedNow.length === 0) {
-    mentionedNow = findProductIdsMentionedInText(userText, products);
-  }
-  if (mentionedNow.length === 0) {
-    const categories = categoriesMentionedInUserText(userText);
-    if (categories.length > 0) {
-      mentionedNow = products
-        .filter((p) => productMatchesUserCategories(p, categories))
-        .map((p) => p.id);
-    }
-  }
+  const discussed = userProducts.filter(
+    (id) => inReply.includes(id) || modelIds.includes(id)
+  );
+  if (discussed.length) return firstTimeOnly(discussed);
 
-  if (explicitPhoto) return mentionedNow.slice(0, 3);
-  return mentionedNow.filter((id) => !alreadySent.has(id)).slice(0, 3);
+  return [];
 }

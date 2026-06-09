@@ -1,9 +1,7 @@
 import { anthropicModelFromEnv } from "@/lib/claude-env";
 import type { ConversationTurn } from "@/lib/claude-generate";
-import {
-  MAX_TOKENS_LANGUAGE_DETECT,
-  MAX_TOKENS_PER_MESSAGE,
-} from "@/lib/claude-generate";
+import { MAX_TOKENS_LANGUAGE_DETECT } from "@/lib/claude-generate";
+import { MAX_THREAD_MESSAGES_FOR_AI } from "@/lib/customer-language-detect";
 import {
   parseCustomerLanguageCode,
   type CustomerLanguage,
@@ -27,7 +25,10 @@ const EMPTY_PHOTO_INTENT: CustomerPhotoIntent = {
 
 type CatalogProductRef = { id: number; productName: string };
 
-function historySnippet(history: ConversationTurn[], maxTurns = 4): string {
+function historySnippet(
+  history: ConversationTurn[],
+  maxTurns = MAX_THREAD_MESSAGES_FOR_AI
+): string {
   const slice = history.slice(-maxTurns);
   return slice
     .map((t) => {
@@ -97,10 +98,12 @@ export async function detectCustomerPhotoIntent(params: {
     catalogLines || "  (empty)",
     "",
     "Fields:",
-    '- wantsPhotos (boolean): true if they want to see product photo(s)/picture(s)/images.',
-    '- explicitRequest (boolean): true if they clearly asked to send/show/share a photo now.',
+    '- wantsPhotos (boolean): true ONLY if they clearly want to see/send/share a photo or picture now.',
+    '- explicitRequest (boolean): true if they explicitly asked to send/show/share a photo (e.g. "photo bhejo", "share kro", "dikhao", "send pic").',
     '- productIds (number[]): catalog ids they want photos of; [] if unclear.',
     '- showAllCatalog (boolean): true if browsing all products / what is available (with photos).',
+    "",
+    "General product questions (price, size, availability) without asking for a photo → wantsPhotos false, explicitRequest false.",
     "",
     "Use recent chat context when the latest message is short (e.g. yes, ok, ha).",
     'Example: {"wantsPhotos":true,"explicitRequest":true,"productIds":[2],"showAllCatalog":false}',
@@ -123,7 +126,7 @@ export async function detectCustomerPhotoIntent(params: {
       },
       body: JSON.stringify({
         model: anthropicModelFromEnv(),
-        max_tokens: MAX_TOKENS_PER_MESSAGE,
+        max_tokens: MAX_TOKENS_LANGUAGE_DETECT,
         system,
         messages: [{ role: "user", content: userPayload }],
       }),
@@ -197,8 +200,9 @@ export async function detectCustomerLanguageWithAi(params: {
     "pt = Portuguese",
     "other = any other language, or unclear / mixed",
     "",
-    "Base your answer on the latest customer message.",
-    "Use recent chat when the latest message is very short (ok, yes, ha, ji, thanks).",
+    "Detect language from ALL customer messages in the chat history below (last 40 messages).",
+    "The assistant must reply in that same language — weight recent messages more if the customer switched language.",
+    "Use the full history when the latest message is very short (ok, yes, ha, ji, thanks).",
     "Roman Urdu MUST be ur_roman, not en, even though it uses Latin letters.",
     'Example: {"language":"fr"}',
   ].join("\n");

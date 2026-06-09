@@ -19,14 +19,25 @@ import { tryAutoReplyInboundWhatsApp } from "@/lib/whatsapp-inbound-ai";
 import {
   acquireGlobalWaBootLock,
   acquireWaProcessLock,
+  clearChromiumPid,
+  clearStaleWaProcessLockIfDead,
   hasPersistedWhatsAppSession,
+  killAllWhatsAppChromiumUnderAuthPath,
+  killProcessTree,
+  prepareAllWhatsAppSessionsForBoot,
   prepareWhatsAppSessionDir,
+  releaseChromiumDefaultProfileLocks,
   sessionDirForBusiness,
+  isGlobalWaBootLockHeldByAlivePeer,
   waitForGlobalWaBootLockRelease,
+  writeChromiumPid,
   writeSessionReadyMarker,
 } from "@/lib/whatsapp-web/session-lock";
 import { resolveInboundSenderWaId } from "@/lib/wa-contact-id";
-import { assertWhatsAppPhoneAvailable } from "@/lib/whatsapp-phone-claim";
+import {
+  assertWhatsAppPhoneAvailable,
+  persistWhatsAppNumberBinding,
+} from "@/lib/whatsapp-phone-claim";
 import { shouldSkipInboundWhatsAppWebMessage } from "@/lib/whatsapp-inbound-filter";
 import {
   computeInboundSinceMs,
@@ -57,6 +68,9 @@ type RuntimeClient = {
   /** When true, inbound without a timestamp is treated as stale (session restore). */
   strictInboundTimestamp: boolean;
   inboundListenerAttached: boolean;
+  /** Restore watchdog — retry if `ready` never follows `authenticated`. */
+  authenticatedWatchdog: ReturnType<typeof setTimeout> | null;
+  restoreWatchdogTriggered: boolean;
 };
 
 const runtime = new Map<number, RuntimeClient>();
@@ -77,9 +91,21 @@ let restorePromise: Promise<void> | null = null;
 let restoreCompleted = false;
 let shutdownHooksRegistered = false;
 const reconnectTimers = new Map<number, ReturnType<typeof setTimeout>>();
+/** Businesses with an active start job (includes init retries). */
+const startingBusinessIds = new Set<number>();
 /** Skip disconnected→reconnect while we intentionally tear down Chromium for a retry. */
 const skipDisconnectReconnectIds = new Set<number>();
 const serverBootTimeMs = Date.now();
+
+/** Per-business restore jobs — prevents duplicate concurrent silent restores. */
+const restoreInProgress = new Set<number>();
+
+const RESTORE_FAILED_MSG = "Session expired, please scan QR again.";
+const RESTORE_AUTHENTICATED_WATCHDOG_MS = 60_000;
+
+export function isBusinessRestoreInProgress(businessId: number): boolean {
+  return restoreInProgress.has(businessId);
+}
 
 function formatInitError(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -102,14 +128,15 @@ function isRetryableBrowserInitError(message: string): boolean {
     /detached|target closed|protocol error|execution context|navigation/i.test(
       message
     ) ||
-    /ebusy|eacces|profile.*in use|user data dir|lockfile|resource temporarily unavailable/i.test(
+    /ebusy|eacces|profile.*in use|user data dir|lockfile|resource temporarily unavailable|econnreset|socket hang up/i.test(
       message
     )
   );
 }
 
 function maxInitAttempts(silentRestore: boolean): number {
-  return silentRestore ? 5 : 2;
+  if (!silentRestore) return 2;
+  return 8;
 }
 
 function initRetryBackoffMs(
@@ -118,8 +145,8 @@ function initRetryBackoffMs(
   browserAlreadyRunning: boolean
 ): number {
   if (!silentRestore) return 800;
-  const base = process.platform === "win32" ? 2200 : 1400;
-  const mult = browserAlreadyRunning ? 2.5 : 1;
+  const base = process.platform === "win32" ? 2800 : 1600;
+  const mult = browserAlreadyRunning ? 3 : 1.25;
   return Math.round(base * (attempt + 1) * mult);
 }
 
@@ -135,6 +162,121 @@ function getMessageId(msg: import("whatsapp-web.js").Message): string {
 
 function isBrowserAlreadyRunningError(message: string): boolean {
   return /browser is already running/i.test(message);
+}
+
+function clearAuthenticatedWatchdog(r: RuntimeClient): void {
+  if (r.authenticatedWatchdog) {
+    clearTimeout(r.authenticatedWatchdog);
+    r.authenticatedWatchdog = null;
+  }
+}
+
+async function markRestoreFailed(businessId: number): Promise<void> {
+  const r = runtime.get(businessId);
+  if (r) {
+    clearAuthenticatedWatchdog(r);
+    r.status = "disconnected";
+    r.initializing = false;
+    r.initError = RESTORE_FAILED_MSG;
+    r.restoreWatchdogTriggered = false;
+  }
+  await persistBusinessWaState(businessId, {
+    waStatus: "restore_failed",
+    waQrDataUrl: null,
+  });
+  console.warn("[whatsapp-web] restore failed — scan QR again", businessId);
+}
+
+async function handleRestoreAttemptsExhausted(
+  businessId: number,
+  reason: string
+): Promise<void> {
+  console.warn(
+    "[whatsapp-web] restore retries exhausted",
+    businessId,
+    reason.slice(0, 120)
+  );
+  await destroyClient(businessId, { suppressDisconnectReconnect: true });
+  await markRestoreFailed(businessId);
+}
+
+function startAuthenticatedWatchdog(
+  businessId: number,
+  attempt: number,
+  sessionDir: string
+): void {
+  const r = runtime.get(businessId);
+  if (!r) return;
+  clearAuthenticatedWatchdog(r);
+  r.authenticatedWatchdog = setTimeout(() => {
+    r.authenticatedWatchdog = null;
+    void handleAuthenticatedWatchdog(businessId, attempt, sessionDir);
+  }, RESTORE_AUTHENTICATED_WATCHDOG_MS);
+}
+
+async function handleAuthenticatedWatchdog(
+  businessId: number,
+  attempt: number,
+  sessionDir: string
+): Promise<void> {
+  const r = runtime.get(businessId);
+  if (!r || r.status === "ready" || r.status !== "authenticated") return;
+
+  console.warn(
+    "[whatsapp-web] authenticated watchdog — ready not received in 60s, retrying",
+    businessId
+  );
+
+  if (attempt + 1 >= maxInitAttempts(true)) {
+    await handleRestoreAttemptsExhausted(
+      businessId,
+      "authenticated watchdog timeout"
+    );
+    return;
+  }
+
+  r.restoreWatchdogTriggered = true;
+  r.initializing = false;
+  skipDisconnectReconnectIds.add(businessId);
+
+  if (r.client) {
+    try {
+      await r.client.destroy();
+    } catch {
+      /* ignore */
+    }
+    r.client = null;
+  }
+
+  await releaseChromiumDefaultProfileLocks(sessionDir);
+  await prepareWhatsAppSessionDir(sessionDir, { boot: true, force: true });
+  await sleep(process.platform === "win32" ? 3000 : 1500);
+
+  void runStartWhatsAppClient(businessId, { restore: true }, attempt + 1).catch(
+    (err) => {
+      console.error("[whatsapp-web] watchdog restore retry failed", businessId, err);
+    }
+  );
+}
+
+async function waitForSilentRestoreCompletion(
+  businessId: number,
+  timeoutMs: number
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = runtime.get(businessId);
+    if (!r) return;
+    if (
+      r.status === "ready" ||
+      r.status === "qr" ||
+      r.status === "auth_failure"
+    ) {
+      return;
+    }
+    if (r.restoreWatchdogTriggered) return;
+    await sleep(400);
+  }
 }
 
 async function persistBusinessWaState(
@@ -187,6 +329,8 @@ function getOrCreateRuntime(businessId: number): RuntimeClient {
       inboundSinceMs: serverBootTimeMs,
       strictInboundTimestamp: true,
       inboundListenerAttached: false,
+      authenticatedWatchdog: null,
+      restoreWatchdogTriggered: false,
     };
     runtime.set(businessId, r);
   }
@@ -219,15 +363,29 @@ export function getWhatsAppRestoreState(): {
 }
 
 /** Start background restore if needed — never blocks HTTP handlers. */
-export function kickoffWhatsAppRestoreIfNeeded(): void {
+export function kickoffWhatsAppRestoreIfNeeded(businessId?: number): void {
+  if (businessId !== undefined && restoreInProgress.has(businessId)) return;
   if (restoreCompleted || restorePromise) return;
   void ensureWhatsAppRestoreStarted();
 }
 
-/** Call once at server boot — creates session folders and registers clean shutdown. */
-export async function initWhatsAppSessionStorage(): Promise<void> {
+/**
+ * Call once at server boot — creates session folders and registers clean shutdown.
+ * Returns false when another live process is restoring (skip kill + restore in this worker).
+ */
+export async function initWhatsAppSessionStorage(): Promise<boolean> {
   await ensureWhatsAppAuthStorage();
   registerWhatsAppShutdownHandlers();
+
+  if (await isGlobalWaBootLockHeldByAlivePeer(AUTH_DATA_PATH)) {
+    console.log(
+      "[whatsapp-web] another process is restoring WhatsApp — skipping chrome cleanup in this worker"
+    );
+    return false;
+  }
+
+  await killAllWhatsAppChromiumUnderAuthPath(AUTH_DATA_PATH);
+  return true;
 }
 
 /** Close Chromium cleanly on server stop so the session profile is not corrupted. */
@@ -245,41 +403,64 @@ export function registerWhatsAppShutdownHandlers(): void {
       console.log(`[whatsapp-web] ${signal} — closing ${ids.length} browser(s)`);
       for (const id of ids) {
         skipDisconnectReconnectIds.add(id);
-        await destroyClient(id, { suppressDisconnectReconnect: true }).catch(
-          () => {}
-        );
+        await destroyClient(id, {
+          suppressDisconnectReconnect: true,
+        }).catch(() => {});
       }
+      await sleep(process.platform === "win32" ? 1200 : 600);
     })();
   };
 
   process.once("SIGINT", () => graceful("SIGINT"));
   process.once("SIGTERM", () => graceful("SIGTERM"));
+  process.once("beforeExit", () => {
+    for (const id of runtime.keys()) {
+      skipDisconnectReconnectIds.add(id);
+      const r = runtime.get(id);
+      if (!r?.client) continue;
+      const sessionDir = sessionDirForBusiness(AUTH_DATA_PATH, id);
+      void closeClientBrowser(r.client, sessionDir).catch(() => {});
+    }
+  });
 }
 
 export function isWhatsAppClientStartInFlight(businessId: number): boolean {
-  return startPromises.has(businessId) || Boolean(runtime.get(businessId)?.initializing);
+  return (
+    startingBusinessIds.has(businessId) ||
+    startPromises.has(businessId) ||
+    Boolean(runtime.get(businessId)?.initializing)
+  );
 }
 
 async function closeClientBrowser(
-  client: import("whatsapp-web.js").Client
+  client: import("whatsapp-web.js").Client,
+  sessionDir?: string
 ): Promise<void> {
   const pup = client as {
     pupBrowser?: {
       close: () => Promise<void>;
-      process?: () => { kill: (signal: string) => void } | null;
+      process?: () => { pid?: number; kill: (signal: string) => void } | null;
     };
   };
+  const pid = pup.pupBrowser?.process?.()?.pid;
   try {
     if (pup.pupBrowser) {
       await pup.pupBrowser.close();
       try {
-        pup.pupBrowser.process?.()?.kill("SIGKILL");
+        const proc = pup.pupBrowser.process?.();
+        if (proc) proc.kill("SIGKILL");
       } catch {
         /* ignore */
       }
     }
   } catch {
     /* ignore */
+  }
+  if (pid && Number.isFinite(pid)) {
+    await killProcessTree(pid).catch(() => {});
+  }
+  if (sessionDir) {
+    await clearChromiumPid(sessionDir);
   }
   try {
     await client.destroy();
@@ -290,7 +471,12 @@ async function closeClientBrowser(
 
 async function destroyClient(
   businessId: number,
-  options?: { suppressDisconnectReconnect?: boolean }
+  options?: {
+    suppressDisconnectReconnect?: boolean;
+    keepInitializing?: boolean;
+    /** Keep per-business file lock during init retries (prevents parallel Chromium launches). */
+    keepProcessLock?: boolean;
+  }
 ): Promise<void> {
   const r = runtime.get(businessId);
   if (!r) return;
@@ -300,18 +486,22 @@ async function destroyClient(
   }
 
   if (r.client) {
-    await closeClientBrowser(r.client);
+    await closeClientBrowser(r.client, sessionDirForBusiness(AUTH_DATA_PATH, businessId));
     r.client = null;
   }
 
-  if (r.releaseProcessLock) {
+  clearAuthenticatedWatchdog(r);
+
+  if (r.releaseProcessLock && !options?.keepProcessLock) {
     await r.releaseProcessLock().catch(() => {});
     r.releaseProcessLock = null;
   }
 
-  r.initializing = false;
+  if (!options?.keepInitializing) {
+    r.initializing = false;
+  }
   const sessionDir = sessionDirForBusiness(AUTH_DATA_PATH, businessId);
-  await prepareWhatsAppSessionDir(sessionDir);
+  await prepareWhatsAppSessionDir(sessionDir, { force: true });
 
   if (options?.suppressDisconnectReconnect) {
     setTimeout(() => skipDisconnectReconnectIds.delete(businessId), 500);
@@ -330,7 +520,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function scheduleWhatsAppReconnect(businessId: number, delayMs = 4000): void {
-  if (startPromises.has(businessId)) return;
+  if (startingBusinessIds.has(businessId) || startPromises.has(businessId)) return;
   if (restorePromise && !restoreCompleted) return;
 
   const existing = reconnectTimers.get(businessId);
@@ -340,10 +530,13 @@ function scheduleWhatsAppReconnect(businessId: number, delayMs = 4000): void {
     setTimeout(() => {
       reconnectTimers.delete(businessId);
       void (async () => {
-        if (startPromises.has(businessId)) return;
+        if (startingBusinessIds.has(businessId) || startPromises.has(businessId)) {
+          return;
+        }
         await ensureDb();
         const row = await Business.findByPk(businessId);
         if (!row || !resolveBusinessAccess(row).allowed) return;
+        if (row.waStatus === "restore_failed") return;
 
         const r = runtime.get(businessId);
         if (r?.status === "ready" && r.client) return;
@@ -390,7 +583,8 @@ export async function waitForWhatsAppReady(
         hasSession &&
         row &&
         row.waStatus !== "auth_failure" &&
-        row.waStatus !== "disconnected";
+        row.waStatus !== "disconnected" &&
+        row.waStatus !== "restore_failed";
       if (shouldStart) {
         void startWhatsAppClient(businessId, { restore: true });
       }
@@ -593,7 +787,11 @@ async function runStartWhatsAppClient(
     r.status === "authenticated" ||
     r.status === "ready";
 
-  if (!options?.force && (r.initializing || (r.client && activeSession))) {
+  if (
+    !options?.force &&
+    attempt === 0 &&
+    (r.initializing || (r.client && activeSession))
+  ) {
     await waitForQrOrReady(businessId, 120_000);
     return {
       status: r.status,
@@ -611,28 +809,40 @@ async function runStartWhatsAppClient(
     !options?.force &&
     (await hasPersistedWhatsAppSession(AUTH_DATA_PATH, businessId));
 
-  const releaseLock = await acquireWaProcessLock(
-    sessionDir,
-    silentRestore ? 45_000 : 15_000
-  );
+  let releaseLock = r.releaseProcessLock;
   if (!releaseLock) {
-    const persisted = await loadPersistedWaState(businessId);
-    const local = getWhatsAppRuntimeStatus(businessId);
-    return {
-      status: local.status !== "disconnected" ? local.status : persisted.status,
-      qrDataUrl: local.qrDataUrl ?? persisted.qrDataUrl,
-      error:
-        local.initError ??
-        "WhatsApp is starting in another server process. Wait a moment and refresh.",
-    };
+    releaseLock = await acquireWaProcessLock(
+      sessionDir,
+      silentRestore ? 45_000 : 15_000
+    );
+    if (!releaseLock) {
+      const persisted = await loadPersistedWaState(businessId);
+      const local = getWhatsAppRuntimeStatus(businessId);
+      if (silentRestore) {
+        scheduleWhatsAppReconnect(
+          businessId,
+          process.platform === "win32" ? 10_000 : 6000
+        );
+      }
+      return {
+        status:
+          local.status !== "disconnected" ? local.status : persisted.status,
+        qrDataUrl: local.qrDataUrl ?? persisted.qrDataUrl,
+        error:
+          local.initError ??
+          "WhatsApp is starting in another server process. Wait a moment and refresh.",
+      };
+    }
+    r.releaseProcessLock = releaseLock;
   }
 
   if (r.client) {
-    await destroyClient(businessId);
+    await destroyClient(businessId, {
+      keepProcessLock: true,
+    });
     await sleep(600);
   }
 
-  r.releaseProcessLock = releaseLock;
   r.initializing = true;
   r.initError = null;
   r.status = "connecting";
@@ -640,7 +850,11 @@ async function runStartWhatsAppClient(
   r.handledMessageIds.clear();
   r.inboundListenerAttached = false;
   r.strictInboundTimestamp = Boolean(options?.restore);
+  r.restoreWatchdogTriggered = false;
+  clearAuthenticatedWatchdog(r);
 
+  await releaseChromiumDefaultProfileLocks(sessionDir);
+  await clearStaleWaProcessLockIfDead(sessionDir);
   await prepareWhatsAppSessionDir(sessionDir, {
     boot: silentRestore && attempt === 0,
   });
@@ -650,7 +864,7 @@ async function runStartWhatsAppClient(
       waStatus: "connecting",
       waQrDataUrl: null,
     });
-  } else {
+  } else if (silentRestore && attempt === 0) {
     console.log(
       "[whatsapp-web] restoring saved session for business",
       businessId
@@ -703,9 +917,13 @@ async function runStartWhatsAppClient(
     r.status = "authenticated";
     console.log("[whatsapp-web] authenticated", businessId);
     await persistBusinessWaState(businessId, { waStatus: "qr" });
+    if (silentRestore) {
+      startAuthenticatedWatchdog(businessId, attempt, sessionDir);
+    }
   });
 
   client.on("ready", async () => {
+    clearAuthenticatedWatchdog(r);
     await ensureDb();
 
     const wid = client.info?.wid?.user ?? "";
@@ -715,9 +933,10 @@ async function runStartWhatsAppClient(
       const claim = await assertWhatsAppPhoneAvailable(businessId, phone);
       if (!claim.ok) {
         console.warn(
-          "[whatsapp-web] rejected duplicate phone",
+          "[whatsapp-web] rejected phone claim",
           phone,
-          "owner business",
+          claim.reason,
+          "business",
           claim.ownerBusinessId
         );
         intentionalDisconnectIds.add(businessId);
@@ -763,6 +982,35 @@ async function runStartWhatsAppClient(
       waQrDataUrl: null,
       whatsappNumber: phone || null,
     });
+    if (phone) {
+      await persistWhatsAppNumberBinding(businessId, phone);
+      const verify = await assertWhatsAppPhoneAvailable(businessId, phone);
+      if (!verify.ok) {
+        console.warn(
+          "[whatsapp-web] binding verify failed after ready",
+          phone,
+          verify.reason
+        );
+        intentionalDisconnectIds.add(businessId);
+        r.status = "auth_failure";
+        r.qrDataUrl = null;
+        r.phoneNumber = null;
+        r.initializing = false;
+        r.initError = verify.message;
+        try {
+          await client.logout();
+        } catch {
+          /* ignore */
+        }
+        await destroyClient(businessId);
+        await persistBusinessWaState(businessId, {
+          waStatus: "auth_failure",
+          waQrDataUrl: null,
+          whatsappNumber: null,
+        });
+        return;
+      }
+    }
     const row = await Business.findByPk(businessId);
     if (row) {
       await row.update({
@@ -776,6 +1024,12 @@ async function runStartWhatsAppClient(
         console.warn("[whatsapp-web] session marker write failed", businessId, err);
       }
     );
+    const browserPid = (client as {
+      pupBrowser?: { process?: () => { pid?: number } | null };
+    }).pupBrowser?.process?.()?.pid;
+    if (browserPid && Number.isFinite(browserPid)) {
+      await writeChromiumPid(sessionDir, browserPid).catch(() => {});
+    }
     console.log("[whatsapp-web] session saved to disk", sessionDir);
   });
 
@@ -838,6 +1092,7 @@ async function runStartWhatsAppClient(
     await client.initialize();
   } catch (err: unknown) {
     const message = formatInitError(err);
+    const browserBusy = isBrowserAlreadyRunningError(message);
     const retriesLeft = attempt + 1 < maxInitAttempts(silentRestore);
     if (retriesLeft && isRetryableBrowserInitError(message)) {
       const browserBusy = isBrowserAlreadyRunningError(message);
@@ -847,12 +1102,16 @@ async function runStartWhatsAppClient(
         `(attempt ${attempt + 2}/${maxInitAttempts(silentRestore)})`,
         message.slice(0, 120)
       );
-      await destroyClient(businessId, { suppressDisconnectReconnect: true });
-      if (r.releaseProcessLock) {
-        await r.releaseProcessLock().catch(() => {});
-        r.releaseProcessLock = null;
-      }
-      await prepareWhatsAppSessionDir(sessionDir, { boot: true });
+      await destroyClient(businessId, {
+        suppressDisconnectReconnect: true,
+        keepInitializing: true,
+        keepProcessLock: true,
+      });
+      await releaseChromiumDefaultProfileLocks(sessionDir);
+      await prepareWhatsAppSessionDir(sessionDir, {
+        boot: true,
+        force: browserBusy,
+      });
       await sleep(initRetryBackoffMs(silentRestore, attempt, browserBusy));
       return runStartWhatsAppClient(
         businessId,
@@ -875,16 +1134,24 @@ async function runStartWhatsAppClient(
     await destroyClient(businessId, { suppressDisconnectReconnect: true });
     if (silentRestore) {
       r.status = "disconnected";
-      console.warn(
-        "[whatsapp-web] restore init failed; will retry reconnect",
-        businessId,
-        message.slice(0, 120)
-      );
-      scheduleWhatsAppReconnect(businessId, process.platform === "win32" ? 6000 : 4000);
+      if (retriesLeft) {
+        console.warn(
+          "[whatsapp-web] restore init failed; will retry",
+          businessId,
+          message.slice(0, 120)
+        );
+        await sleep(initRetryBackoffMs(silentRestore, attempt, browserBusy));
+        return runStartWhatsAppClient(
+          businessId,
+          { restore: true },
+          attempt + 1
+        );
+      }
+      await handleRestoreAttemptsExhausted(businessId, message);
       return {
         status: "disconnected",
         qrDataUrl: null,
-        error: message,
+        error: RESTORE_FAILED_MSG,
       };
     }
     r.status = "auth_failure";
@@ -896,14 +1163,78 @@ async function runStartWhatsAppClient(
     };
   }
 
-  await waitForQrOrReady(businessId, 120_000);
-  const runtime = getWhatsAppRuntimeStatus(businessId);
-  r.initializing = runtime.status !== "ready";
+  if (silentRestore) {
+    await waitForSilentRestoreCompletion(businessId, 120_000);
+    const rAfterWait = runtime.get(businessId);
+    if (rAfterWait?.restoreWatchdogTriggered) {
+      return {
+        status: rAfterWait.status,
+        qrDataUrl: rAfterWait.qrDataUrl,
+        error: rAfterWait.initError ?? undefined,
+      };
+    }
+  } else {
+    await waitForQrOrReady(businessId, 120_000);
+  }
+
+  const postWaitStatus = getWhatsAppRuntimeStatus(businessId).status;
+  if (silentRestore && postWaitStatus === "authenticated") {
+    if (attempt + 1 < maxInitAttempts(silentRestore)) {
+      console.warn(
+        "[whatsapp-web] stuck at authenticated after restore wait — retrying",
+        businessId
+      );
+      clearAuthenticatedWatchdog(r);
+      await destroyClient(businessId, {
+        suppressDisconnectReconnect: true,
+        keepProcessLock: true,
+      });
+      await releaseChromiumDefaultProfileLocks(sessionDir);
+      await prepareWhatsAppSessionDir(sessionDir, { boot: true, force: true });
+      await sleep(process.platform === "win32" ? 4000 : 2000);
+      return runStartWhatsAppClient(businessId, { restore: true }, attempt + 1);
+    }
+    await handleRestoreAttemptsExhausted(
+      businessId,
+      "stuck at authenticated after restore wait"
+    );
+    return {
+      status: "disconnected",
+      qrDataUrl: null,
+      error: RESTORE_FAILED_MSG,
+    };
+  }
+
+  const runtimeStatus = getWhatsAppRuntimeStatus(businessId);
+  r.initializing = runtimeStatus.status !== "ready";
+
+  if (
+    silentRestore &&
+    runtimeStatus.status !== "ready" &&
+    runtimeStatus.status !== "qr" &&
+    runtimeStatus.status !== "auth_failure"
+  ) {
+    if (attempt + 1 >= maxInitAttempts(silentRestore)) {
+      await handleRestoreAttemptsExhausted(
+        businessId,
+        `restore ended in ${runtimeStatus.status}`
+      );
+      return {
+        status: "disconnected",
+        qrDataUrl: null,
+        error: RESTORE_FAILED_MSG,
+      };
+    }
+    scheduleWhatsAppReconnect(
+      businessId,
+      process.platform === "win32" ? 8000 : 5000
+    );
+  }
 
   return {
-    status: runtime.status,
-    qrDataUrl: runtime.qrDataUrl,
-    error: runtime.initError ?? undefined,
+    status: runtimeStatus.status,
+    qrDataUrl: runtimeStatus.qrDataUrl,
+    error: runtimeStatus.initError ?? undefined,
   };
 }
 
@@ -917,16 +1248,40 @@ export async function startWhatsAppClient(
 }> {
   if (options?.force) {
     startPromises.delete(businessId);
+    startingBusinessIds.delete(businessId);
+    restoreInProgress.delete(businessId);
+  } else if (options?.restore) {
+    if (restoreInProgress.has(businessId)) {
+      const inFlight = startPromises.get(businessId);
+      if (inFlight) return inFlight;
+      return {
+        status: "connecting",
+        qrDataUrl: null,
+      };
+    }
+    const inFlight = startPromises.get(businessId);
+    if (inFlight) return inFlight;
+    restoreInProgress.add(businessId);
   } else {
     const inFlight = startPromises.get(businessId);
     if (inFlight) return inFlight;
+    if (startingBusinessIds.has(businessId)) {
+      const pending = startPromises.get(businessId);
+      if (pending) return pending;
+    }
   }
 
-  const job = runStartWhatsAppClient(businessId, options).finally(() => {
-    if (startPromises.get(businessId) === job) {
-      startPromises.delete(businessId);
-    }
-  });
+  startingBusinessIds.add(businessId);
+  const job = runStartWhatsAppClient(businessId, options)
+    .finally(() => {
+      startingBusinessIds.delete(businessId);
+      if (options?.restore && !options?.force) {
+        restoreInProgress.delete(businessId);
+      }
+      if (startPromises.get(businessId) === job) {
+        startPromises.delete(businessId);
+      }
+    });
   startPromises.set(businessId, job);
   return job;
 }
@@ -1015,6 +1370,7 @@ export async function disconnectWhatsAppClient(
   await destroyClient(businessId);
   runtime.delete(businessId);
   startPromises.delete(businessId);
+  startingBusinessIds.delete(businessId);
 
   // Deep purge session files so "Reload" requires a fresh scan.
   const { purgePersistedWhatsAppSession } = await import(
@@ -1047,7 +1403,8 @@ export async function restoreWhatsAppClients(): Promise<void> {
     const shouldRestore =
       hasSession &&
       b.waStatus !== "disconnected" &&
-      b.waStatus !== "auth_failure";
+      b.waStatus !== "auth_failure" &&
+      b.waStatus !== "restore_failed";
 
     if (shouldRestore) toRestore.push(b.id);
   }
@@ -1063,14 +1420,19 @@ export async function restoreWhatsAppClients(): Promise<void> {
     "WhatsApp session(s) on startup…"
   );
 
+  await prepareAllWhatsAppSessionsForBoot(AUTH_DATA_PATH);
+
   // Previous dev-server Chromium may still be releasing profile locks (especially Windows).
-  const bootSettleMs = process.platform === "win32" ? 3500 : 900;
+  const bootSettleMs = process.platform === "win32" ? 5500 : 1500;
   await sleep(bootSettleMs);
 
   for (const businessId of toRestore) {
+    if (restoreInProgress.has(businessId)) continue;
     try {
       const sessionDir = sessionDirForBusiness(AUTH_DATA_PATH, businessId);
-      await prepareWhatsAppSessionDir(sessionDir, { boot: true });
+      await releaseChromiumDefaultProfileLocks(sessionDir);
+      await clearStaleWaProcessLockIfDead(sessionDir);
+      await prepareWhatsAppSessionDir(sessionDir, { boot: true, force: true });
       const result = await startWhatsAppClient(businessId, { restore: true });
       if (result.status === "ready") {
         console.log("[whatsapp-web] session ready for business", businessId);
@@ -1097,7 +1459,11 @@ export function ensureWhatsAppRestoreStarted(): Promise<void> {
   if (restoreCompleted) return Promise.resolve();
   if (!restorePromise) {
     restorePromise = (async () => {
-      await initWhatsAppSessionStorage();
+      const shouldRestore = await initWhatsAppSessionStorage();
+      if (!shouldRestore) {
+        await waitForGlobalWaBootLockRelease(AUTH_DATA_PATH);
+        return;
+      }
       const releaseGlobal = await acquireGlobalWaBootLock(AUTH_DATA_PATH);
       if (!releaseGlobal) {
         console.log(

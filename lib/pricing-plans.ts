@@ -18,17 +18,17 @@ export const PRICING_PLANS: PricingPlan[] = [
     id: "starter",
     name: "Starter",
     tagline: "Perfect for small businesses",
-    price: "$19",
+    price: "$10",
     connections: [
-      { text: "Up to 1,000 AI replies" },
-      { text: "500 contacts" },
+      { text: "Up to 5,000 AI replies" },
+      { text: "1,000 contacts" },
     ],
     features: [
       { text: "AI product selling bot", included: true },
       { text: "Add & manage products", included: true },
       { text: "Order tracking dashboard", included: true },
       { text: "Blacklist numbers", included: true },
-      { text: "Email order notifications", included: true },
+      { text: "Email order alerts", included: true },
       { text: "API access", included: false },
       { text: "Basic support", included: true },
     ],
@@ -39,10 +39,10 @@ export const PRICING_PLANS: PricingPlan[] = [
     id: "pro",
     name: "Pro",
     tagline: "For growing sales teams",
-    price: "$49",
+    price: "$29",
     highlighted: true,
     connections: [
-      { text: "Up to 5,000 AI replies" },
+      { text: "Unlimited AI replies", badge: "Unlimited" },
       { text: "Unlimited contacts", badge: "Unlimited" },
     ],
     features: [
@@ -50,7 +50,7 @@ export const PRICING_PLANS: PricingPlan[] = [
       { text: "Add & manage products", included: true },
       { text: "Order tracking dashboard", included: true },
       { text: "Blacklist numbers", included: true },
-      { text: "Email + WhatsApp order alerts", included: true },
+      { text: "Email order alerts", included: true },
       { text: "Custom AI instruction", included: true },
       { text: "API access", included: false },
       { text: "Basic support", included: true },
@@ -65,7 +65,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     price: null,
     priceNote: "Our team will share pricing with you",
     connections: [
-      { text: "Unlimited AI replies" },
+      { text: "Unlimited AI replies" ,badge: "Unlimited"},
       { text: "Unlimited contacts", badge: "Unlimited" },
     ],
     features: [
@@ -73,8 +73,9 @@ export const PRICING_PLANS: PricingPlan[] = [
       { text: "Add & manage products", included: true },
       { text: "Order tracking dashboard", included: true },
       { text: "Blacklist numbers", included: true },
-      { text: "Email + WhatsApp order alerts", included: true },
+      { text: "Email order alerts", included: true },
       { text: "Custom AI instruction", included: true },
+      { text: "Whatsapp Marketing", included: true },
       { text: "Full REST API access + API key", included: true, bold: true },
       { text: "Custom features", included: true },
       {

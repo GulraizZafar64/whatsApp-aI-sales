@@ -1,3 +1,5 @@
+import { parseOrderEventFromAiReply } from "@/lib/order-ai-events";
+
 const CANCEL_ORDER_RE =
   /\b(?:cancel(?:led|lation)?|cancel\s+kar(?:o|na|do)?|order\s+cancel|mera\s+order\s+cancel|delete\s+(?:my\s+)?order|order\s+delete|order\s+hatao|order\s+nahi\s+chahiye|don't\s+want\s+(?:the\s+)?order|do\s+not\s+want\s+(?:the\s+)?order)\b/i;
 
@@ -27,7 +29,8 @@ export function resolveOrderUpdateConfirmedForDb(params: {
   hasOrderPayload: boolean;
   isCustomerConfirmation: (text: string) => boolean;
 }): boolean {
-  if (params.rawReply.includes("[[ORDER_UPDATE_CONFIRMED]]")) return true;
+  const event = parseOrderEventFromAiReply(params.rawReply);
+  if (event?.event === "order_update") return true;
   if (!params.hasPendingOrder || !params.hasOrderPayload) return false;
   return params.isCustomerConfirmation(params.userText);
 }

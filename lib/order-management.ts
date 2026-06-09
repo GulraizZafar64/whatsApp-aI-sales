@@ -178,6 +178,33 @@ export async function findActiveCustomerOrderGroup(params: {
   return best;
 }
 
+function actionDetailsLabel(actionType: OrderActionType, notes?: string | null): string {
+  const base: Record<OrderActionType, string> = {
+    order_created: "A new order was placed by the customer.",
+    order_updated: "A pending order was updated by the customer.",
+    order_cancelled: "The order was cancelled.",
+    cancellation_requested: "The customer requested cancellation of an accepted order.",
+    cancellation_approved: "You approved the customer's cancellation request.",
+    cancellation_rejected: "You rejected the customer's cancellation request.",
+    order_accepted: "The order was accepted.",
+    order_completed: "The order was marked completed.",
+    order_dispatched: "The order was marked dispatched.",
+    order_rejected: "The order was rejected.",
+    status_changed: "Order status was changed manually.",
+  };
+  const line = base[actionType] ?? "Order updated.";
+  return notes?.trim() ? `${line} ${notes.trim()}` : line;
+}
+
+/** Owner inbox email — only high-signal customer actions (not accept/dispatch/complete). */
+function shouldSendOwnerEmail(actionType: OrderActionType): boolean {
+  return (
+    actionType === "order_created" ||
+    actionType === "order_cancelled" ||
+    actionType === "cancellation_requested"
+  );
+}
+
 function emailEventForAction(actionType: OrderActionType): OrderEmailEvent {
   switch (actionType) {
     case "order_created":
@@ -203,24 +230,6 @@ function emailEventForAction(actionType: OrderActionType): OrderEmailEvent {
     default:
       return "status_changed";
   }
-}
-
-function actionDetailsLabel(actionType: OrderActionType, notes?: string | null): string {
-  const base: Record<OrderActionType, string> = {
-    order_created: "A new order was placed by the customer.",
-    order_updated: "A pending order was updated by the customer.",
-    order_cancelled: "The order was cancelled.",
-    cancellation_requested: "The customer requested cancellation of an accepted order.",
-    cancellation_approved: "You approved the customer's cancellation request.",
-    cancellation_rejected: "You rejected the customer's cancellation request.",
-    order_accepted: "The order was accepted.",
-    order_completed: "The order was marked completed.",
-    order_dispatched: "The order was marked dispatched.",
-    order_rejected: "The order was rejected.",
-    status_changed: "Order status was changed manually.",
-  };
-  const line = base[actionType] ?? "Order updated.";
-  return notes?.trim() ? `${line} ${notes.trim()}` : line;
 }
 
 async function emailCustomerPhoneFields(params: {
@@ -395,7 +404,10 @@ export async function transitionOrderGroup(
       }
     }
 
-    if (params.notifyOwnerEmail !== false) {
+    if (
+      params.notifyOwnerEmail !== false &&
+      shouldSendOwnerEmail(params.actionType)
+    ) {
       const business = await Business.findByPk(params.businessId, {
         attributes: ["businessName"],
       });
@@ -509,28 +521,11 @@ export async function notifyNewOrUpdatedOrder(params: {
     metadata: { lineIds: snap.lineIds },
   });
 
-  const contactRaw = params.contactRawWaId?.trim() || params.customerWaId;
-  const customerMsg =
-    params.customerMessage ??
-    (params.actionType === "order_created"
-      ? "Your order was submitted successfully. The business owner will confirm shortly."
-      : "Your order was updated successfully.");
-
-  try {
-    await sendWhatsAppTextMessage({
-      businessId: params.businessId,
-      toWaId: contactRaw,
-      body: customerMsg,
-    });
-  } catch (e) {
-    console.warn("[order-management] customer notify failed:", e);
-  }
-
   const business = await Business.findByPk(params.businessId, {
     attributes: ["businessName"],
   });
   const ownerEmail = await getOwnerEmail(params.businessId);
-  if (ownerEmail) {
+  if (ownerEmail && params.actionType === "order_created") {
     const contactFields = await emailCustomerPhoneFields({
       businessId: params.businessId,
       customerWaId: params.customerWaId,
@@ -543,8 +538,7 @@ export async function notifyNewOrUpdatedOrder(params: {
       orderGroupId: params.orderGroupId,
       customerName: snap.customerName,
       ...contactFields,
-      previousStatus:
-        params.actionType === "order_updated" ? "pending" : null,
+      previousStatus: null,
       newStatus: "pending",
       timestamp: new Date(),
       orderAmount: snap.totalAmount,
@@ -586,8 +580,7 @@ export async function handleCustomerOrderCancel(params: {
       newStatus: "cancelled",
       actionType: "order_cancelled",
       performedBy: "customer",
-      customerMessage:
-        "Your order has been successfully cancelled.",
+      notifyCustomer: false,
       contactRawWaId: params.contactRawWaId,
       whatsappChatId: params.whatsappChatId,
       notifyOwnerEmail: true,
@@ -608,8 +601,7 @@ export async function handleCustomerOrderCancel(params: {
       newStatus: "cancellation_requested",
       actionType: "cancellation_requested",
       performedBy: "customer",
-      customerMessage:
-        "Your order has already been accepted by the business. A cancellation request has been submitted to the owner. The order will only be cancelled if the owner approves the request.",
+      notifyCustomer: false,
       contactRawWaId: params.contactRawWaId,
       whatsappChatId: params.whatsappChatId,
       notifyOwnerEmail: true,
@@ -703,9 +695,8 @@ export async function ownerRespondToCancellation(params: {
       actionType: "cancellation_approved",
       performedBy: "owner",
       performedByUserId: params.ownerUserId,
-      customerMessage:
-        "Your cancellation request has been approved and your order has been cancelled.",
-      notifyOwnerEmail: true,
+      notifyCustomer: false,
+      notifyOwnerEmail: false,
       notes: "Owner approved cancellation.",
     });
   }
@@ -718,9 +709,8 @@ export async function ownerRespondToCancellation(params: {
     actionType: "cancellation_rejected",
     performedBy: "owner",
     performedByUserId: params.ownerUserId,
-    customerMessage:
-      "Your cancellation request was rejected. Your order remains active and will proceed as accepted.",
-    notifyOwnerEmail: true,
+    notifyCustomer: false,
+    notifyOwnerEmail: false,
     notes: "Owner rejected cancellation.",
   });
 }
@@ -741,23 +731,9 @@ export function actionTypeForOwnerStatusChange(
 }
 
 export function customerMessageForOwnerStatusChange(
-  newStatus: OrderStatus,
-  accept?: boolean
+  _newStatus: OrderStatus,
+  _accept?: boolean
 ): string | undefined {
-  if (accept || newStatus === "accepted") {
-    return "Your order is accepted.";
-  }
-  if (newStatus === "dispatched") {
-    return "Your order has been dispatched and is on the way.";
-  }
-  if (newStatus === "complete") {
-    return "Your order is complete. Thank you!";
-  }
-  if (newStatus === "rejected") {
-    return "Your order was rejected by the business. Please contact them if you have questions.";
-  }
-  if (newStatus === "cancelled") {
-    return "Your order has been cancelled.";
-  }
+  // Status updates are dashboard-only — no automated WhatsApp to the customer.
   return undefined;
 }

@@ -21,12 +21,12 @@ export const PLAN_QUOTAS: Record<
     apiAccess: false,
   },
   starter: {
-    aiRepliesPerMonth: 1_000,
-    contactsPerMonth: 500,
+    aiRepliesPerMonth: 5_000,
+    contactsPerMonth: 1_000,
     apiAccess: false,
   },
   pro: {
-    aiRepliesPerMonth: 5_000,
+    aiRepliesPerMonth: null,
     contactsPerMonth: null,
     apiAccess: false,
   },

@@ -38,15 +38,6 @@ export function parseCustomerLanguageCode(raw: string): CustomerLanguage {
   return LANGUAGE_CODE_SET.has(code) ? (code as CustomerLanguage) : "other";
 }
 
-/** Template order-status replies exist only for Urdu + English. */
-export function orderStatusUsesTemplateLang(lang: CustomerLanguage): boolean {
-  return (
-    lang === "ur_roman" ||
-    lang === "ur_script" ||
-    lang === "en"
-  );
-}
-
 export function customerLanguageLabel(lang: CustomerLanguage): string {
   switch (lang) {
     case "ur_roman":

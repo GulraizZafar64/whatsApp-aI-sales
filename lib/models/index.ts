@@ -30,6 +30,8 @@ export class Business extends Model<
   declare country: string | null;
   declare currency: CreationOptional<string>;
   declare whatsappNumber: string | null;
+  /** First WhatsApp number linked to this account — never cleared after connect. */
+  declare boundWhatsappNumber: string | null;
   declare waStatus: CreationOptional<string>;
   declare waQrDataUrl: string | null;
   /** Inbox only shows messages at or after this time (set when WhatsApp becomes ready). */
@@ -232,6 +234,7 @@ export function initModels(sequelize: Sequelize): void {
         defaultValue: "PKR",
       },
       whatsappNumber: DataTypes.STRING(64),
+      boundWhatsappNumber: DataTypes.STRING(64),
       waStatus: {
         type: DataTypes.STRING(32),
         allowNull: false,

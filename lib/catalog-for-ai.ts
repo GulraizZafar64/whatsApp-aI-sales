@@ -42,7 +42,7 @@ function parseStringArray(raw: string | null): string[] {
   }
 }
 
-/** Load the business catalog from MySQL on every inbound message. */
+/** Load the business catalog from MySQL on every inbound message (no cache). */
 export async function fetchBusinessProductsForAi(
   businessId: number
 ): Promise<Product[]> {
@@ -51,6 +51,27 @@ export async function fetchBusinessProductsForAi(
     where: { businessId },
     order: [["id", "ASC"]],
   });
+}
+
+/** Short inventory list + rules so the model ignores deleted products from chat history. */
+export function catalogInventoryRulesBlock(products: Product[]): string {
+  if (!products.length) {
+    return [
+      "CURRENT INVENTORY: (empty — no products in database right now).",
+      "If the customer asks for any product, say nothing is available at the moment and the owner will update the catalog soon.",
+      "Do NOT confirm availability for any product name from earlier chat — those may have been deleted.",
+    ].join("\n");
+  }
+
+  const names = products.map(
+    (p) => `• id ${p.id}: ${p.productName.trim()}`
+  );
+  return [
+    `CURRENT INVENTORY (${products.length} item${products.length === 1 ? "" : "s"} — ONLY these exist right now; loaded fresh from database on this message):`,
+    ...names,
+    "If the customer asks for anything NOT in this list or CATALOG_JSON — including products you discussed earlier in chat — say it is no longer available / out of stock and offer items from CURRENT INVENTORY only.",
+    "Never invent products. Never say yes to a deleted or unlisted item.",
+  ].join("\n");
 }
 
 export function buildAiCatalogPayload(

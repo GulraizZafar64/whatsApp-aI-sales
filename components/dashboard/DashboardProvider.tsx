@@ -31,6 +31,7 @@ import {
   setAuthToken,
 } from "@/lib/dashboard/session";
 import { BillingAccessBanner } from "@/components/dashboard/BillingAccessBanner";
+import { SubscriptionRequiredModal } from "@/components/dashboard/SubscriptionRequiredModal";
 
 export type BillingBlockReason =
   | "trial_expired"
@@ -86,6 +87,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [trialStartedPopupOpen, setTrialStartedPopupOpen] = useState(false);
   const [billingBlockReason, setBillingBlockReason] =
     useState<BillingBlockReason | null>(null);
+  const [billingPlan, setBillingPlan] = useState<string | null>(null);
+  const [boundWhatsappNumber, setBoundWhatsappNumber] = useState<string | null>(
+    null
+  );
 
   const refreshProfile = useCallback(async () => {
     if (!hasDashboardSession()) {
@@ -106,9 +111,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         country?: string | null;
         currency?: string | null;
         whatsappNumber?: string | null;
+        boundWhatsappNumber?: string | null;
         billing?: {
           accessAllowed?: boolean;
           blockReason?: BillingBlockReason | null;
+          plan?: string | null;
         } | null;
       };
       const blockReason =
@@ -116,6 +123,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
           ? me.billing.blockReason
           : null;
       setBillingBlockReason(blockReason);
+      setBillingPlan(me.billing?.plan?.trim() || null);
+      setBoundWhatsappNumber(me.boundWhatsappNumber?.trim() || null);
       if (typeof me.token === "string" && me.token.trim()) {
         setAuthToken(me.token);
       }
@@ -127,7 +136,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         Boolean(
           me.businessId &&
             me.profileComplete &&
-            (me as { needsQrModal?: boolean }).needsQrModal === true
+            (me as { needsQrModal?: boolean }).needsQrModal === true &&
+            !blockReason
         )
       );
       if (me.businessId) {
@@ -359,14 +369,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         onSave={(data) => {
           void saveProfile(data);
         }}
-        onDisconnectWhatsApp={() => {
-          void disconnectWhatsApp();
-        }}
+        onDisconnectWhatsApp={
+          billingPlan === "trial"
+            ? undefined
+            : () => {
+                void disconnectWhatsApp();
+              }
+        }
       />
-      {needsQr && !needsSetup && (
+      {needsQr && !needsSetup && !billingBlockReason && (
         <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/50 p-4">
           <WhatsAppQrPanel
             key="whatsapp-qr-connect"
+            boundWhatsappNumber={boundWhatsappNumber}
             onConnected={() => {
               setNeedsQr(false);
               setWaStatus("ready");
@@ -376,6 +391,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
           />
         </div>
       )}
+      {billingBlockReason === "trial_expired" &&
+        !needsSetup &&
+        bootstrapped && (
+          <SubscriptionRequiredModal blockReason={billingBlockReason} />
+        )}
       {trialStartedPopupOpen && (
         <div className="fixed inset-0 z-[195] flex items-center justify-center bg-black/55 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">

@@ -1,5 +1,8 @@
 import { franc } from "franc-min";
 import type { ConversationTurn } from "@/lib/claude-generate";
+
+/** Chat rows loaded for AI context (language + conversation). */
+export const MAX_THREAD_MESSAGES_FOR_AI = 40;
 import {
   parseCustomerLanguageCode,
   type CustomerLanguage,
@@ -30,9 +33,9 @@ const FRANC_TO_CUSTOMER: Record<string, CustomerLanguage> = {
   por: "pt",
 };
 
-function textFromHistory(history: ConversationTurn[], maxTurns = 4): string {
+/** All customer (user) text from thread history — up to last 40 DB messages merged into turns. */
+export function allUserTextFromHistory(history: ConversationTurn[]): string {
   return history
-    .slice(-maxTurns)
     .filter((t) => t.role === "user")
     .map((t) =>
       typeof t.content === "string"
@@ -42,6 +45,7 @@ function textFromHistory(history: ConversationTurn[], maxTurns = 4): string {
             .map((b) => ("text" in b ? b.text : ""))
             .join("\n")
     )
+    .filter(Boolean)
     .join("\n");
 }
 
@@ -77,10 +81,16 @@ export function detectCustomerLanguageLocal(params: {
   const latest = params.userText.trim();
   if (!latest || latest.startsWith("[Voice")) return "other";
 
-  const combined =
-    latest.length >= 12
-      ? latest
-      : `${textFromHistory(params.history ?? [])}\n${latest}`.trim();
+  // Latin-only without Roman Urdu hints → English (place names, short English replies).
+  if (
+    /^[a-z0-9\s,.\-#'"/]+$/i.test(latest) &&
+    !ROMAN_URDU_HINT_RE.test(latest)
+  ) {
+    return "en";
+  }
+
+  const userHistory = allUserTextFromHistory(params.history ?? []);
+  const combined = userHistory ? `${userHistory}\n${latest}`.trim() : latest;
 
   const fromScript = scriptLanguage(combined);
   if (fromScript) return fromScript;
@@ -104,5 +114,10 @@ export function detectCustomerLanguageLocal(params: {
 /** Short replies (ok, yes, ji) — local guess is often wrong; caller may use AI. */
 export function needsAiLanguageDisambiguation(userText: string): boolean {
   const t = userText.trim();
-  return t.length > 0 && t.length <= 24;
+  if (!t || t.length > 24) return false;
+  // Latin-only English / address lines — local detection is reliable enough.
+  if (/^[a-z0-9\s,.\-#'"/]+$/i.test(t) && !ROMAN_URDU_HINT_RE.test(t)) {
+    return false;
+  }
+  return true;
 }

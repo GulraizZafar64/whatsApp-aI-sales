@@ -244,8 +244,17 @@ export async function processDueFollowUps(): Promise<number> {
       continue;
     }
 
+    const productRow = await Product.findOne({
+      where: { id: job.productId, businessId: job.businessId },
+      attributes: ["id", "productName"],
+    });
+    if (!productRow) {
+      await job.update({ status: "cancelled" });
+      continue;
+    }
+
     const body = buildBargainFollowUpMessage({
-      productName: job.productName,
+      productName: productRow.productName,
       bargainPrice: bargain,
       tone: normalizeReplyTone(business.replyTone),
     });

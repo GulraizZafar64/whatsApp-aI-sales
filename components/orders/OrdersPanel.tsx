@@ -9,8 +9,10 @@ import { formatMoney, currencySymbol, normalizeCurrency } from "@/lib/currency";
 import { createProductFormConfig } from "@/lib/product-form-config";
 import {
   mergeProductDescription,
+  newPriceTierRow,
   parseDescriptionParts,
-  tierAmountForField,
+  stripCurrencyPrefix,
+  type ParsedPriceTier,
 } from "@/lib/product-description";
 import {
   isAllowedProductImageFile,
@@ -93,7 +95,10 @@ export function OrdersPanel() {
   const [prepTime, setPrepTime] = useState("");
   const [allergens, setAllergens] = useState("");
   const [bargainingLowAmount, setBargainingLowAmount] = useState("");
-  const [tierAmounts, setTierAmounts] = useState<Record<string, string>>({});
+  const [useVariantPrices, setUseVariantPrices] = useState(false);
+  const [priceTierRows, setPriceTierRows] = useState<
+    (ParsedPriceTier & { id: string })[]
+  >([newPriceTierRow()]);
   const [images, setImages] = useState<string[]>([]);
 
   const effectiveBusinessType =
@@ -126,7 +131,10 @@ export function OrdersPanel() {
     if (!formCfg.showBargaining) setBargainingLowAmount("");
     if (!formCfg.showPrepTime) setPrepTime("");
     if (!formCfg.showAllergens) setAllergens("");
-    if (!formCfg.showPriceTiers) setTierAmounts({});
+    if (!formCfg.showPriceTiers) {
+      setUseVariantPrices(false);
+      setPriceTierRows([newPriceTierRow()]);
+    }
   }, [formCfg.formKind, modalOpen]);
 
   const closeModal = useCallback(() => {
@@ -148,7 +156,8 @@ export function OrdersPanel() {
     setPrepTime("");
     setAllergens("");
     setBargainingLowAmount("");
-    setTierAmounts({});
+    setUseVariantPrices(false);
+    setPriceTierRows([newPriceTierRow()]);
     setImages([]);
   }, []);
 
@@ -170,7 +179,8 @@ export function OrdersPanel() {
     setPrepTime("");
     setAllergens("");
     setBargainingLowAmount("");
-    setTierAmounts({});
+    setUseVariantPrices(false);
+    setPriceTierRows([newPriceTierRow()]);
     setImages([]);
     setModalOpen(true);
   }, []);
@@ -233,12 +243,15 @@ export function OrdersPanel() {
   }, [formCfg, sizesArray, colorsArray, portionsArray]);
 
   function buildProductDescriptionForSave(base: string): string | null {
-    const tiers = formCfg.showPriceTiers
-      ? formCfg.priceTiers.map((t) => ({
-          label: t.label,
-          amount: tierAmounts[t.key]?.trim() ?? "",
-        }))
-      : [];
+    const tiers =
+      formCfg.showPriceTiers && useVariantPrices
+        ? priceTierRows
+            .filter((t) => t.label.trim() || t.amount.trim())
+            .map((t) => ({
+              label: t.label.trim(),
+              amount: t.amount.trim(),
+            }))
+        : [];
 
     return mergeProductDescription({
       notes: base,
@@ -293,15 +306,20 @@ export function OrdersPanel() {
     const descParts = parseDescriptionParts(p.productDescription);
     const foodBits = parseFoodExtrasFromDescription(descParts.notes);
     setProductDescription(foodBits.base);
-    const nextTiers: Record<string, string> = {};
-    for (const t of cfg.priceTiers) {
-      nextTiers[t.key] = tierAmountForField(
-        descParts.tierAmounts,
-        t.label,
-        t.key
+    if (cfg.showPriceTiers && descParts.tiers.length > 0) {
+      setUseVariantPrices(true);
+      setPriceTierRows(
+        descParts.tiers.map((t) =>
+          newPriceTierRow({
+            label: t.label,
+            amount: stripCurrencyPrefix(t.amount, moneySym),
+          })
+        )
       );
+    } else {
+      setUseVariantPrices(false);
+      setPriceTierRows([newPriceTierRow()]);
     }
-    setTierAmounts(nextTiers);
     setPrepTime(foodBits.prep);
     setAllergens(foodBits.allergen);
     setBargainingLowAmount(p.bargainingLowAmount ?? "");
@@ -356,10 +374,26 @@ export function OrdersPanel() {
       toast.error("Add at least one color (comma-separated).");
       return;
     }
-    const pNum = Number.parseFloat(price);
-    if (!Number.isFinite(pNum) || pNum < 0) {
-      toast.error("Enter a valid price.");
-      return;
+
+    let pNum: number;
+    if (formCfg.showPriceTiers && useVariantPrices) {
+      const validTiers = priceTierRows.filter(
+        (t) =>
+          t.label.trim() &&
+          Number.isFinite(Number.parseFloat(t.amount)) &&
+          Number.parseFloat(t.amount) >= 0
+      );
+      if (!validTiers.length) {
+        toast.error("Add at least one size/portion with a name and price.");
+        return;
+      }
+      pNum = Number.parseFloat(validTiers[0]!.amount);
+    } else {
+      pNum = Number.parseFloat(price);
+      if (!Number.isFinite(pNum) || pNum < 0) {
+        toast.error("Enter a valid price.");
+        return;
+      }
     }
 
     const payload = {
@@ -660,38 +694,117 @@ export function OrdersPanel() {
           ) : null}
         </label>
 
-        {formCfg.showPriceTiers && formCfg.priceTiers.length > 0 ? (
-          <div className="rounded-xl border border-[#075E54]/20 bg-[#f0f9f6] p-3 space-y-3">
-            <p className="text-xs font-bold text-[#075E54]">
-              Prices by size / portion
-            </p>
-            {formCfg.priceFieldHint ? (
-              <p className="text-[11px] text-[#667781] leading-relaxed">
-                {formCfg.priceFieldHint}
-              </p>
-            ) : null}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {formCfg.priceTiers.map((tier) => (
-                <label
-                  key={tier.key}
-                  className="block text-[11px] font-semibold text-[#54656f]"
+        {formCfg.showPriceTiers ? (
+          <div className="space-y-3">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none rounded-xl border border-[#075E54]/20 bg-[#f0f9f6] px-3 py-3">
+              <input
+                type="checkbox"
+                checked={useVariantPrices}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setUseVariantPrices(checked);
+                  if (checked && priceTierRows.length === 0) {
+                    setPriceTierRows([newPriceTierRow()]);
+                  }
+                }}
+                className="mt-0.5 rounded border-black/20"
+              />
+              <span className="text-sm text-[#111b21] leading-snug">
+                <span className="font-semibold block">
+                  Different prices for each size or portion
+                </span>
+                <span className="text-[11px] font-normal text-[#667781]">
+                  e.g. Full Biryani, Half Biryani — each with its own price. Hides
+                  the single price field below.
+                </span>
+              </span>
+            </label>
+
+            {useVariantPrices ? (
+              <div className="rounded-xl border border-[#075E54]/20 bg-[#f0f9f6] p-3 space-y-3">
+                <p className="text-xs font-bold text-[#075E54]">
+                  Prices by size / portion
+                </p>
+                {formCfg.variantPricesHint ? (
+                  <p className="text-[11px] text-[#667781] leading-relaxed">
+                    {formCfg.variantPricesHint}
+                  </p>
+                ) : null}
+                <div className="space-y-2">
+                  {priceTierRows.map((row, index) => (
+                    <div
+                      key={row.id}
+                      className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end"
+                    >
+                      <label className="block text-[11px] font-semibold text-[#54656f]">
+                        {index === 0 ? "Name *" : "Name"}
+                        <input
+                          value={row.label}
+                          onChange={(e) =>
+                            setPriceTierRows((prev) =>
+                              prev.map((t) =>
+                                t.id === row.id
+                                  ? { ...t, label: e.target.value }
+                                  : t
+                              )
+                            )
+                          }
+                          placeholder={
+                            formCfg.formKind === "food"
+                              ? "e.g. Full, Half"
+                              : "e.g. Medium, Large"
+                          }
+                          className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
+                        />
+                      </label>
+                      <label className="block text-[11px] font-semibold text-[#54656f]">
+                        {index === 0 ? "Price *" : "Price"}
+                        <input
+                          inputMode="decimal"
+                          value={row.amount}
+                          onChange={(e) =>
+                            setPriceTierRows((prev) =>
+                              prev.map((t) =>
+                                t.id === row.id
+                                  ? { ...t, amount: e.target.value }
+                                  : t
+                              )
+                            )
+                          }
+                          placeholder={`${moneySym} 0`}
+                          className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
+                        />
+                      </label>
+                      {priceTierRows.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPriceTierRows((prev) =>
+                              prev.filter((t) => t.id !== row.id)
+                            )
+                          }
+                          className="h-9 px-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200"
+                          aria-label="Remove row"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <span className="hidden sm:block h-9" aria-hidden />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPriceTierRows((prev) => [...prev, newPriceTierRow()])
+                  }
+                  className="w-full sm:w-auto rounded-lg border border-[#075E54]/35 bg-white px-3 py-2 text-xs font-bold text-[#075E54] hover:bg-[#075E54]/5"
                 >
-                  {tier.label}
-                  <input
-                    inputMode="decimal"
-                    value={tierAmounts[tier.key] ?? ""}
-                    onChange={(e) =>
-                      setTierAmounts((prev) => ({
-                        ...prev,
-                        [tier.key]: e.target.value,
-                      }))
-                    }
-                    placeholder={`${moneySym} ${tier.placeholder.replace(/^e\.g\.\s*/i, "").replace(/[^\d.]/g, "") || "0"}`}
-                    className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
-                  />
-                </label>
-              ))}
-            </div>
+                  + Add more
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -719,16 +832,18 @@ export function OrdersPanel() {
           </label>
         ) : null}
 
-        <label className="block text-xs font-semibold text-[#54656f]">
-          Price ({effectiveCurrency}) *
-          <input
-            inputMode="decimal"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder={`${moneySym} 0`}
-            className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
-          />
-        </label>
+        {!(formCfg.showPriceTiers && useVariantPrices) ? (
+          <label className="block text-xs font-semibold text-[#54656f]">
+            Price ({effectiveCurrency}) *
+            <input
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder={`${moneySym} 0`}
+              className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#075E54]/25"
+            />
+          </label>
+        ) : null}
 
         {formCfg.showDiscount ? (
         <div className="rounded-xl border border-black/8 bg-white/70 p-3 space-y-3">

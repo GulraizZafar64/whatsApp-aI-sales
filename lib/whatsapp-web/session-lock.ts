@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 
 const LOCK_FILE = ".server-wa.lock";
 const GLOBAL_BOOT_LOCK = ".wa-boot-restore.lock";
+const CHROMIUM_PID_FILE = ".chromium.pid";
 const LOCK_MAX_AGE_MS = 10 * 60 * 1000;
 const GLOBAL_BOOT_LOCK_MAX_MS = 5 * 60 * 1000;
 
@@ -78,6 +79,24 @@ export async function acquireGlobalWaBootLock(
   return null;
 }
 
+/** True when another live Node process holds the global boot-restore lock. */
+export async function isGlobalWaBootLockHeldByAlivePeer(
+  authDataPath: string
+): Promise<boolean> {
+  const lockPath = path.join(authDataPath, GLOBAL_BOOT_LOCK);
+  try {
+    const raw = await fs.readFile(lockPath, "utf8");
+    const parsed = JSON.parse(raw) as { pid?: number; startedAt?: number };
+    const pid = parsed.pid ?? 0;
+    if (pid <= 0 || pid === process.pid) return false;
+    const age = Date.now() - (parsed.startedAt ?? 0);
+    if (age > GLOBAL_BOOT_LOCK_MAX_MS) return false;
+    return isProcessAlive(pid);
+  } catch {
+    return false;
+  }
+}
+
 /** Wait until another process finishes boot restore. */
 export async function waitForGlobalWaBootLockRelease(
   authDataPath: string,
@@ -95,6 +114,25 @@ export async function waitForGlobalWaBootLockRelease(
   }
 }
 
+/** Drop `.server-wa.lock` when the owning PID is no longer running. */
+export async function clearStaleWaProcessLockIfDead(
+  sessionDir: string
+): Promise<boolean> {
+  const lockPath = path.join(sessionDir, LOCK_FILE);
+  try {
+    const raw = await fs.readFile(lockPath, "utf8");
+    const parsed = JSON.parse(raw) as { pid?: number; startedAt?: number };
+    const pid = parsed.pid ?? 0;
+    if (pid > 0 && !isProcessAlive(pid)) {
+      await fs.rm(lockPath, { force: true }).catch(() => {});
+      return true;
+    }
+  } catch {
+    /* no lock or unreadable */
+  }
+  return false;
+}
+
 /** One Node process per business may own the Chromium profile at a time. */
 export async function acquireWaProcessLock(
   sessionDir: string,
@@ -105,12 +143,27 @@ export async function acquireWaProcessLock(
   const deadline = Date.now() + maxWaitMs;
 
   while (Date.now() < deadline) {
+    await clearStaleWaProcessLockIfDead(sessionDir);
     const release = await tryAcquireLockFile(lockPath, LOCK_MAX_AGE_MS);
     if (release) return release;
     await waitMs(400);
   }
 
   return null;
+}
+
+/** Delete Chromium singleton locks under `Default/` before boot restore. */
+export async function releaseChromiumDefaultProfileLocks(
+  sessionDir: string
+): Promise<void> {
+  const defaultDir = path.join(sessionDir, "Default");
+  const names = ["SingletonLock", "SingletonSocket", "SingletonCookie"];
+  for (const name of names) {
+    await fs.rm(path.join(defaultDir, name), {
+      force: true,
+      recursive: true,
+    }).catch(() => {});
+  }
 }
 
 /** Remove Chromium profile locks left after a crash (Windows/Linux). */
@@ -128,6 +181,32 @@ export async function releaseChromiumProfileLocks(
       force: true,
       recursive: true,
     }).catch(() => {});
+  }
+  await removeChromiumSingletonLocksRecursive(sessionDir);
+}
+
+/** Walk session profile tree and delete Singleton* lock files (Chromium may nest them). */
+export async function removeChromiumSingletonLocksRecursive(
+  dir: string,
+  depth = 0
+): Promise<void> {
+  if (depth > 8) return;
+  let entries: { name: string; isDirectory: () => boolean }[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.name.startsWith("Singleton")) {
+      await fs.rm(fullPath, { force: true, recursive: true }).catch(() => {});
+      continue;
+    }
+    if (entry.isDirectory()) {
+      await removeChromiumSingletonLocksRecursive(fullPath, depth + 1);
+    }
   }
 }
 
@@ -165,56 +244,248 @@ export async function hasPersistedWhatsAppSession(
   }
 }
 
-/** Stop headless Chrome still holding this WhatsApp session folder (Windows crash/hot reload). */
-export async function killOrphanedChromiumForSession(
-  sessionDir: string
-): Promise<void> {
-  const token = path.basename(sessionDir);
-  if (!token) return;
-
-  const pathNeedle = sessionDir.replace(/\\/g, "/");
-
+/** Stop a Chromium process tree by PID (Windows: taskkill /T /F). */
+export async function killProcessTree(pid: number): Promise<void> {
+  if (!Number.isFinite(pid) || pid <= 0) return;
   try {
     if (process.platform === "win32") {
-      const escapedToken = token.replace(/'/g, "''");
-      const escapedPath = pathNeedle.replace(/'/g, "''");
       await execFileAsync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-Command",
-          [
-            "$procs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {",
-            "($_.Name -eq 'chrome.exe' -or $_.Name -eq 'chromium.exe') -and (",
-            `$_.CommandLine -like '*${escapedToken}*' -or $_.CommandLine -like '*${escapedPath}*'`,
-            ")};",
-            "foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }",
-          ].join(" "),
-        ],
-        { timeout: 25_000, windowsHide: true }
+        "taskkill",
+        ["/PID", String(pid), "/T", "/F"],
+        { timeout: 15_000, windowsHide: true }
       );
     } else {
-      await execFileAsync("pkill", ["-f", token], { timeout: 10_000 });
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        process.kill(pid, "SIGKILL");
+      }
     }
   } catch {
-    /* no matching process */
+    /* already exited */
+  }
+}
+
+export async function writeChromiumPid(
+  sessionDir: string,
+  pid: number
+): Promise<void> {
+  if (!Number.isFinite(pid) || pid <= 0) return;
+  await fs.mkdir(sessionDir, { recursive: true });
+  await fs.writeFile(
+    path.join(sessionDir, CHROMIUM_PID_FILE),
+    String(pid),
+    "utf8"
+  );
+}
+
+export async function clearChromiumPid(sessionDir: string): Promise<void> {
+  await fs.rm(path.join(sessionDir, CHROMIUM_PID_FILE), { force: true }).catch(
+    () => {}
+  );
+}
+
+/** Kill Chromium PID saved from the last successful session (if still running). */
+export async function killStoredChromiumPid(
+  sessionDir: string
+): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(
+      path.join(sessionDir, CHROMIUM_PID_FILE),
+      "utf8"
+    );
+    const pid = Number.parseInt(raw.trim(), 10);
+    if (pid > 0 && isProcessAlive(pid)) {
+      console.log("[whatsapp-web] stopping saved Chromium pid", pid);
+      await killProcessTree(pid);
+      await waitMs(process.platform === "win32" ? 1500 : 600);
+      return true;
+    }
+  } catch {
+    /* no pid file */
+  }
+  return false;
+}
+
+function sessionPathNeedles(sessionDir: string): string[] {
+  const normalized = path.resolve(sessionDir);
+  const forward = normalized.replace(/\\/g, "/");
+  const backslash = normalized.replace(/\//g, "\\");
+  const token = path.basename(sessionDir);
+  const authToken = ".wwebjs_auth";
+  return [...new Set([forward, backslash, token, authToken])];
+}
+
+async function killWindowsChromiumByCommandLine(
+  needles: string[]
+): Promise<number> {
+  const escaped = needles
+    .filter(Boolean)
+    .map((n) => n.replace(/'/g, "''").replace(/"/g, '`"'));
+  if (!escaped.length) return 0;
+
+  const likeClauses = escaped
+    .flatMap((n) => [
+      `$_.CommandLine -like '*${n}*'`,
+      `$_.CommandLine -like '*${n.toLowerCase()}*'`,
+    ])
+    .join(" -or ");
+
+  const script = [
+    "$killed = 0",
+    "$names = @('chrome.exe','chromium.exe','chromedriver.exe','Google Chrome')",
+    "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {",
+    "  $_.CommandLine -and ($names -contains $_.Name) -and (",
+    `    ${likeClauses}`,
+    "  )",
+    "} | ForEach-Object {",
+    "  Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue",
+    "  $killed++",
+    "}",
+    "Write-Output $killed",
+  ].join("; ");
+
+  try {
+    const { stdout } = await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        script,
+      ],
+      { timeout: 30_000, windowsHide: true }
+    );
+    return Number.parseInt(String(stdout).trim(), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function killUnixChromiumByCommandLine(needles: string[]): Promise<void> {
+  for (const needle of needles) {
+    if (!needle || needle.length < 4) continue;
+    try {
+      await execFileAsync("pkill", ["-f", needle], { timeout: 10_000 });
+    } catch {
+      /* none matched */
+    }
+  }
+}
+
+export async function killOrphanedChromiumForSession(
+  sessionDir: string
+): Promise<number> {
+  const token = path.basename(sessionDir);
+  if (!token) return 0;
+
+  let killed = 0;
+  if (await killStoredChromiumPid(sessionDir)) killed += 1;
+
+  const needles = sessionPathNeedles(sessionDir);
+  if (process.platform === "win32") {
+    killed += await killWindowsChromiumByCommandLine(needles);
+  } else {
+    await killUnixChromiumByCommandLine(needles);
+  }
+
+  if (killed > 0) {
+    console.log(
+      "[whatsapp-web] closed",
+      killed,
+      "orphan browser process(es) for",
+      token
+    );
+  }
+  return killed;
+}
+
+/** On server boot — stop ANY Chromium still using this project's .wwebjs_auth profiles. */
+export async function killAllWhatsAppChromiumUnderAuthPath(
+  authDataPath: string
+): Promise<void> {
+  const authNeedles = sessionPathNeedles(path.resolve(authDataPath));
+  if (process.platform === "win32") {
+    const n = await killWindowsChromiumByCommandLine(authNeedles);
+    if (n > 0) {
+      console.log(
+        "[whatsapp-web] boot cleanup — stopped",
+        n,
+        "Chromium process(es) under",
+        authDataPath
+      );
+    }
+  } else {
+    await killUnixChromiumByCommandLine(authNeedles);
+  }
+
+  let names: string[];
+  try {
+    names = await fs.readdir(authDataPath);
+  } catch {
+    return;
+  }
+
+  for (const name of names.filter((n) => n.startsWith("session-biz-"))) {
+    await killStoredChromiumPid(path.join(authDataPath, name));
+  }
+}
+
+/** Before server boot restore — clean every saved session profile (orphan Chrome + locks). */
+export async function prepareAllWhatsAppSessionsForBoot(
+  authDataPath: string
+): Promise<void> {
+  await killAllWhatsAppChromiumUnderAuthPath(authDataPath);
+  await waitMs(process.platform === "win32" ? 2000 : 800);
+
+  let names: string[];
+  try {
+    names = await fs.readdir(authDataPath);
+  } catch {
+    return;
+  }
+
+  const sessionDirs = names
+    .filter((name) => name.startsWith("session-biz-"))
+    .map((name) => path.join(authDataPath, name));
+
+  for (const sessionDir of sessionDirs) {
+    await releaseChromiumDefaultProfileLocks(sessionDir);
+    await prepareWhatsAppSessionDir(sessionDir, { boot: true, force: true });
   }
 }
 
 /** Clear stale Chromium locks before Puppeteer opens the WhatsApp profile. */
 export async function prepareWhatsAppSessionDir(
   sessionDir: string,
-  options?: { boot?: boolean }
+  options?: { boot?: boolean; force?: boolean }
 ): Promise<void> {
   const boot = options?.boot === true;
-  const settleMs = boot ? (process.platform === "win32" ? 2500 : 900) : 400;
+  const force = options?.force === true || boot;
+  const settleMs = force
+    ? process.platform === "win32"
+      ? 4000
+      : 1500
+    : boot
+      ? process.platform === "win32"
+        ? 3200
+        : 1200
+      : 500;
+  const passes = force
+    ? process.platform === "win32"
+      ? 5
+      : 4
+    : boot
+      ? process.platform === "win32"
+        ? 4
+        : 3
+      : 1;
 
-  for (let pass = 0; pass < (boot ? 3 : 1); pass++) {
+  for (let pass = 0; pass < passes; pass++) {
     await killOrphanedChromiumForSession(sessionDir);
     await releaseChromiumProfileLocks(sessionDir);
-    if (pass + 1 < (boot ? 3 : 1)) {
+    if (pass + 1 < passes) {
       await waitMs(settleMs);
     }
   }

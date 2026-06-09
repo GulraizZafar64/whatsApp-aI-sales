@@ -29,29 +29,57 @@ export function formatPriceTiersBlock(
   return `${PRICING_HEADER}\n${lines.join("\n")}`;
 }
 
+export type ParsedPriceTier = {
+  label: string;
+  amount: string;
+};
+
+export function stripCurrencyPrefix(amount: string, currencyPrefix?: string): string {
+  let a = amount.trim();
+  const prefix = currencyPrefix?.trim();
+  if (prefix) {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    a = a.replace(new RegExp(`^${escaped}\\s*`, "i"), "");
+  }
+  return a.replace(/^Rs\.?\s*/i, "").trim();
+}
+
 export function parseDescriptionParts(desc: string | null): {
   notes: string;
   tierAmounts: Record<string, string>;
+  tiers: ParsedPriceTier[];
 } {
   const raw = desc?.trim() ?? "";
   if (!raw.includes(PRICING_HEADER)) {
-    return { notes: raw, tierAmounts: {} };
+    return { notes: raw, tierAmounts: {}, tiers: [] };
   }
 
   const idx = raw.indexOf(PRICING_HEADER);
   const notes = raw.slice(0, idx).trim();
   const pricingBlock = raw.slice(idx + PRICING_HEADER.length).trim();
   const tierAmounts: Record<string, string> = {};
+  const tiers: ParsedPriceTier[] = [];
 
   for (const line of pricingBlock.split("\n")) {
     const m = line.match(/^-\s*(.+?):\s*(.+)$/);
     if (!m) continue;
-    const label = m[1]!.trim().toLowerCase();
+    const label = m[1]!.trim();
     const amount = m[2]!.trim();
-    tierAmounts[label] = amount;
+    tierAmounts[label.toLowerCase()] = amount;
+    tiers.push({ label, amount });
   }
 
-  return { notes, tierAmounts };
+  return { notes, tierAmounts, tiers };
+}
+
+export function newPriceTierRow(
+  partial?: Partial<ParsedPriceTier>
+): ParsedPriceTier & { id: string } {
+  return {
+    id: `tier-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    label: partial?.label ?? "",
+    amount: partial?.amount ?? "",
+  };
 }
 
 /** Map saved description tier labels back to form field keys. */

@@ -18,6 +18,15 @@ export function resolveWhatsAppStatusForApi(params: {
   phoneNumber: string | null;
   initError: string | null;
 } {
+  if (params.dbWaStatus === "restore_failed") {
+    return {
+      status: "disconnected",
+      qrDataUrl: null,
+      phoneNumber: params.dbWhatsappNumber ?? null,
+      initError: "Session expired, please scan QR again.",
+    };
+  }
+
   const runtime = getWhatsAppRuntimeStatus(params.businessId);
   const restore = getWhatsAppRestoreState();
   const inFlight = isWhatsAppClientStartInFlight(params.businessId);
@@ -42,7 +51,8 @@ export function resolveWhatsAppStatusForApi(params: {
     } else if (runtime.status === "qr") {
       status = "qr";
     } else if (runtime.status === "disconnected" && !qrDataUrl) {
-      status = "disconnected";
+      // Saved session on disk — show connecting while background restore/reconnect runs.
+      status = "connecting";
     }
   }
 

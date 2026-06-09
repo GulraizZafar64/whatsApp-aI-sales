@@ -4,6 +4,7 @@ import { signAuthToken, verifyAuthToken } from "@/lib/auth/jwt";
 import {
   getCheckoutUrl,
   getEnterpriseWhatsAppUrl,
+  isWhatsAppSessionAllowed,
   resolveBusinessAccess,
 } from "@/lib/billing";
 import { readBusinessBilling } from "@/lib/business-billing";
@@ -46,6 +47,9 @@ export async function GET(request: Request) {
   let needsQrModal = false;
   let waQrDataUrl: string | null = null;
 
+  const billing = b ? readBusinessBilling(b) : null;
+  const access = b ? resolveBusinessAccess(b) : null;
+
   if (b) {
     const authPath = getWhatsAppAuthPath();
     hasSavedSession = await hasPersistedWhatsAppSession(authPath, b.id);
@@ -62,17 +66,17 @@ export async function GET(request: Request) {
     waQrDataUrl = resolved.qrDataUrl;
 
     needsQrModal =
-      waStatus === "qr" ||
-      waStatus === "auth_failure" ||
-      (!hasSavedSession && waStatus !== "ready" && waStatus !== "connecting");
+      Boolean(access && isWhatsAppSessionAllowed(access)) &&
+      (waStatus === "qr" ||
+        waStatus === "auth_failure" ||
+        (!hasSavedSession &&
+          waStatus !== "ready" &&
+          waStatus !== "connecting"));
   }
 
   const payload = verifyAuthToken(bearerToken(request));
   const tokenBusinessId = payload?.businessId ?? null;
   const needsTokenRefresh = Boolean(b?.id) && tokenBusinessId !== b!.id;
-
-  const billing = b ? readBusinessBilling(b) : null;
-  const access = b ? resolveBusinessAccess(b) : null;
 
   return NextResponse.json({
     user: { id: user.id, email: user.email, name: user.name },
@@ -83,6 +87,7 @@ export async function GET(request: Request) {
     country: b?.country ?? null,
     currency: b?.currency ?? null,
     whatsappNumber: b?.whatsappNumber ?? null,
+    boundWhatsappNumber: b?.boundWhatsappNumber ?? null,
     waStatus,
     hasSavedSession,
     needsQrModal,

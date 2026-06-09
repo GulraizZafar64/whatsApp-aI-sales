@@ -1,5 +1,4 @@
 import { businessTypeKind, isValidBusinessType } from "@/lib/business-type";
-import type { PriceTierField } from "@/lib/product-description";
 
 export type ProductFormKind =
   | "ecommerce"
@@ -76,9 +75,9 @@ export function createProductFormConfig(businessType: string | null | undefined)
 
     descriptionHint:
       formKind === "food"
-        ? "Write what the dish is. Below, set every portion price (full, half, small). The AI must quote from those prices when the customer picks a size."
+        ? "Write what the dish is. Tick “Different prices…” below to add portion names and prices (Full, Half, etc.) — the AI quotes the matching price when the customer picks one."
         : formKind === "ecommerce"
-          ? "Write what the product is. Below, set price for each size (small shirt, medium, large, etc.). The AI uses these when the customer chooses a size."
+          ? "Write what the product is. Tick “Different prices…” below to add size names and prices (S, M, L or custom labels) — the AI uses them when the customer chooses a size."
           : formKind === "booking"
             ? "Include duration, location, and what the client should send to book."
             : formKind === "lead"
@@ -88,50 +87,12 @@ export function createProductFormConfig(businessType: string | null | undefined)
     descriptionRows: formKind === "food" || formKind === "ecommerce" ? 4 : 3,
 
     showPriceTiers: formKind === "food" || formKind === "ecommerce",
-    priceTiers:
-      formKind === "food"
-        ? ([
-            {
-              key: "full",
-              label: "Full / regular plate price",
-              placeholder: "e.g. 500",
-            },
-            {
-              key: "half",
-              label: "Half portion price",
-              placeholder: "e.g. 300",
-            },
-            {
-              key: "small",
-              label: "Small portion price",
-              placeholder: "e.g. 200",
-            },
-          ] satisfies PriceTierField[])
-        : formKind === "ecommerce"
-          ? ([
-              {
-                key: "small",
-                label: "Small size price",
-                placeholder: "e.g. 1200",
-              },
-              {
-                key: "medium",
-                label: "Medium size price",
-                placeholder: "e.g. 1500",
-              },
-              {
-                key: "large",
-                label: "Large size price",
-                placeholder: "e.g. 1800",
-              },
-            ] satisfies PriceTierField[])
-          : ([] as PriceTierField[]),
 
-    priceFieldHint:
+    variantPricesHint:
       formKind === "food"
-        ? "List every portion price. Price above is the default (usually full plate) for quick checkout."
+        ? "Add each portion name and price (e.g. Full → 500, Half → 300). The first row is used as the default list price."
         : formKind === "ecommerce"
-          ? "List every size price. Price above is the default (usually medium) for quick checkout."
+          ? "Add each size name and price (e.g. Medium → 1500, Large → 1800). The first row is used as the default list price."
           : "",
 
     showStockQuantity: false,

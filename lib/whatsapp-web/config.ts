@@ -4,7 +4,10 @@ import path from "path";
 /** Stable directory for LocalAuth session profiles (survives server restarts). */
 export function getWhatsAppAuthPath(): string {
   const raw = process.env.WWEBJS_AUTH_PATH?.trim();
-  return path.resolve(raw || path.join(process.cwd(), ".wwebjs_auth"));
+  return path.resolve(
+    raw ||
+      path.join(/* turbopackIgnore: true */ process.cwd(), ".wwebjs_auth")
+  );
 }
 
 export function webVersionCacheDirForBusiness(

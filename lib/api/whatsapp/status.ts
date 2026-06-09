@@ -5,6 +5,9 @@ import { ensureDb } from "@/lib/sequelize";
 import { getWhatsAppAuthPath } from "@/lib/whatsapp-web/config";
 import {
   getWhatsAppRestoreState,
+  getWhatsAppRuntimeStatus,
+  isBusinessRestoreInProgress,
+  isWhatsAppClientStartInFlight,
   kickoffWhatsAppRestoreIfNeeded,
   prepareWhatsAppSession,
   startWhatsAppClient,
@@ -29,12 +32,27 @@ export async function GET(request: Request) {
 
   await ensureDb();
 
-  kickoffWhatsAppRestoreIfNeeded();
+  kickoffWhatsAppRestoreIfNeeded(businessId);
 
   await gate.business.reload();
 
   const authPath = getWhatsAppAuthPath();
   const savedSession = await hasPersistedWhatsAppSession(authPath, businessId);
+
+  const restore = getWhatsAppRestoreState();
+  if (
+    savedSession &&
+    gate.business.waStatus === "ready" &&
+    !restore.inProgress &&
+    !isWhatsAppClientStartInFlight(businessId) &&
+    !isBusinessRestoreInProgress(businessId)
+  ) {
+    const local = getWhatsAppRuntimeStatus(businessId);
+    // Only kick restore when runtime is fully idle — not while boot restore is connecting.
+    if (local.status === "disconnected") {
+      void startWhatsAppClient(businessId, { restore: true });
+    }
+  }
 
   const resolved = resolveWhatsAppStatusForApi({
     businessId,
@@ -49,6 +67,7 @@ export async function GET(request: Request) {
     qrDataUrl: resolved.qrDataUrl,
     phoneNumber: resolved.phoneNumber,
     whatsappNumber: gate.business.whatsappNumber,
+    boundWhatsappNumber: gate.business.boundWhatsappNumber,
     initError: resolved.initError,
     restoreCompleted: getWhatsAppRestoreState().completed,
   });

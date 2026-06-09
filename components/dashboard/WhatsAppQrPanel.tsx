@@ -5,6 +5,8 @@ import toast from "react-hot-toast";
 import { BallLoader } from "@/components/ui/BallLoader";
 import { shouldToastDashboardApiError } from "@/lib/dashboard/api-errors";
 import { dashboardFetch } from "@/lib/dashboard/session";
+import { formatWaPhoneForDisplay } from "@/lib/phone-normalize";
+import { getSupportWhatsAppUrl } from "@/lib/support-contact";
 
 type WaStatus =
   | "disconnected"
@@ -23,8 +25,11 @@ export function resetWhatsAppConnectPostGuard(): void {
 
 export function WhatsAppQrPanel({
   onConnected,
+  boundWhatsappNumber = null,
 }: {
   onConnected?: () => void;
+  /** Permanent number lock for this account (from dashboard bootstrap). */
+  boundWhatsappNumber?: string | null;
 }) {
   const [status, setStatus] = useState<WaStatus>("disconnected");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -181,8 +186,21 @@ export function WhatsAppQrPanel({
   const showQr = Boolean(qrDataUrl);
   const waitingScan = status === "qr" || status === "authenticated";
 
+  const boundDisplay = boundWhatsappNumber?.trim()
+    ? formatWaPhoneForDisplay(boundWhatsappNumber)
+    : null;
+  const showSupportLink =
+    Boolean(initError?.includes("Contact support")) ||
+    Boolean(initError?.includes("contact support"));
+
   return (
     <div className="rounded-xl bg-white border border-black/10 p-6 shadow-sm max-w-md mx-auto text-center">
+      {boundDisplay ? (
+        <p className="mb-4 text-xs text-left rounded-lg bg-amber-50 border border-amber-200/80 px-3 py-2 text-amber-950 leading-relaxed">
+          This account is locked to <span className="font-semibold">{boundDisplay}</span>.
+          Only that WhatsApp number can be connected here.
+        </p>
+      ) : null}
       <div className="space-y-4 mb-6">
         <div className="flex items-center justify-center gap-2 text-primary font-bold">
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
@@ -257,6 +275,16 @@ export function WhatsAppQrPanel({
                   <p className="text-sm text-on-error-container opacity-90 leading-relaxed">
                     {initError ?? "Failed to connect to WhatsApp. Please try again."}
                   </p>
+                  {showSupportLink ? (
+                    <a
+                      href={getSupportWhatsAppUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block mt-3 text-sm font-semibold text-[#075E54] underline underline-offset-2"
+                    >
+                      Contact support on WhatsApp
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -283,7 +311,9 @@ export function WhatsAppQrPanel({
         >
           {starting
             ? "Starting…"
-            : "Refresh QR"}
+            : initError?.includes("Session expired")
+              ? "Scan QR again"
+              : "Refresh QR"}
         </button>
       )}
     </div>

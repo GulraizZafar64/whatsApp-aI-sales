@@ -87,6 +87,41 @@ export function parseBusinessTypeQuery(
   return BUSINESS_TYPES.includes(t as BusinessType) ? (t as BusinessType) : null;
 }
 
+/** AI system-prompt block: how checkout and lead capture should behave per business type. */
+export function businessTypeAiHint(raw: string | null | undefined): string {
+  const label = (raw || "").trim() || "Product-Based E-commerce";
+  const kind = businessTypeKind(raw);
+  switch (kind) {
+    case "lead":
+      return [
+        `BUSINESS TYPE: ${label} (Lead Generation).`,
+        "Physical delivery is NOT required — do NOT ask for delivery address.",
+        "Qualify the lead: collect name, interest, budget, timeline, and contact details per owner instructions.",
+      ].join(" ");
+    case "booking":
+      return [
+        `BUSINESS TYPE: ${label} (Service Booking).`,
+        "Do NOT ask for delivery address.",
+        "Collect appointment/service details (date, time, service type, location if relevant).",
+      ].join(" ");
+    case "digital":
+      return [
+        `BUSINESS TYPE: ${label} (Digital Goods).`,
+        "No physical delivery — skip delivery address unless owner checkout settings require payment proof only.",
+      ].join(" ");
+    case "food":
+      return [
+        `BUSINESS TYPE: ${label} (Food & Delivery).`,
+        "Delivery address is required for confirmed orders.",
+      ].join(" ");
+    default:
+      return [
+        `BUSINESS TYPE: ${label} (Physical products).`,
+        "Follow owner checkout settings for address, delivery charges, and payment.",
+      ].join(" ");
+  }
+}
+
 export function getBusinessTypeDescription(
   raw: string | null | undefined
 ): string | null {

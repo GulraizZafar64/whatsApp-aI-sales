@@ -9,9 +9,8 @@ export async function register() {
       try {
         const { ensureDb } = await import("@/lib/sequelize");
         await ensureDb();
-        const { initWhatsAppSessionStorage, ensureWhatsAppRestoreStarted } =
+        const { ensureWhatsAppRestoreStarted } =
           await import("@/lib/whatsapp-web/manager");
-        await initWhatsAppSessionStorage();
         await ensureWhatsAppRestoreStarted();
         console.log("[instrumentation] WhatsApp startup restore complete");
       } catch (err) {

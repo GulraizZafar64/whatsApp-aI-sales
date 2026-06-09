@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppChrome } from "@/components/AppChrome";
 import { Toaster } from "react-hot-toast";
-import { APP_LOGO_PATH } from "@/lib/brand";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,10 +13,6 @@ export const metadata: Metadata = {
   title: "AI Sales Automation — WhatsApp Replies 24/7",
   description:
     "Automatically engage, nurture, and close deals through WhatsApp. Our AI understands customer intent and handles inquiries while you sleep.",
-  icons: {
-    icon: APP_LOGO_PATH,
-    apple: APP_LOGO_PATH,
-  },
 };
 
 export default function RootLayout({

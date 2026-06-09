@@ -21,7 +21,8 @@ export function normalizeReplyTone(raw: string | null | undefined): ReplyTone {
 export function replyToneSystemPrompt(tone: ReplyTone): string {
   const shared =
     "This tone applies to every reply (greeting, sales, order thanks, upsell). " +
-    "Stay in the customer's language; do not switch tone mid-chat unless they change theirs first.";
+    "Stay in the customer's language; do not switch tone mid-chat unless they change theirs first. " +
+    "Always be polite, warm, and genuinely happy to help — never cold, rushed, or robotic.";
 
   switch (tone) {
     case "Friendly":

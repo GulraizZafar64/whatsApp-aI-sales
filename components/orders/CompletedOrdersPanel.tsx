@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import toast from "react-hot-toast";
 import { useDashboard } from "@/components/dashboard/DashboardProvider";
 import { BallLoader } from "@/components/ui/BallLoader";
@@ -29,6 +35,7 @@ type OrderRow = {
   deliveryNote?: string | null;
   customerWaId?: string | null;
   customerName?: string | null;
+  customerPhone?: string | null;
   status?: OrderStatus;
   orderGroupId?: string | null;
   hasOrderPaymentProof?: boolean;
@@ -41,6 +48,7 @@ type OrderGroup = {
   orderGroupId: string | null;
   customerWaId: string | null;
   customerName: string | null;
+  customerPhone: string | null;
   deliveryNote: string | null;
   orderSource: string;
   status: OrderStatus;
@@ -124,6 +132,7 @@ function groupOrders(rows: OrderRow[]): OrderGroup[] {
         orderGroupId: groupId ?? null,
         customerWaId: row.customerWaId ?? null,
         customerName: row.customerName ?? null,
+        customerPhone: row.customerPhone ?? null,
         deliveryNote: row.deliveryNote ?? null,
         orderSource: row.orderSource ?? "manual",
         status: rowStatus(row),
@@ -181,6 +190,52 @@ function statusClass(status: OrderStatus): string {
   }
 }
 
+type OrderActionVariant =
+  | "primary"
+  | "teal"
+  | "violet"
+  | "secondary"
+  | "danger"
+  | "ghost";
+
+const ORDER_ACTION_BTN_BASE =
+  "inline-flex items-center justify-center rounded-md px-2.5 py-1 text-[11px] font-semibold leading-tight whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+
+const ORDER_ACTION_BTN_VARIANT: Record<OrderActionVariant, string> = {
+  primary: "bg-[#075E54] text-white hover:bg-[#064a44] shadow-sm",
+  teal: "bg-[#128C7E] text-white hover:bg-[#0e7a6f] shadow-sm",
+  violet: "bg-violet-600 text-white hover:bg-violet-700 shadow-sm",
+  secondary:
+    "border border-black/12 bg-white text-[#54656f] hover:bg-[#f0f2f5]",
+  danger:
+    "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:border-red-300",
+  ghost:
+    "border border-[#075E54]/30 bg-[#075E54]/5 text-[#075E54] hover:bg-[#075E54]/10",
+};
+
+function OrderTableActionBtn({
+  variant = "secondary",
+  disabled,
+  onClick,
+  children,
+}: {
+  variant?: OrderActionVariant;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`${ORDER_ACTION_BTN_BASE} ${ORDER_ACTION_BTN_VARIANT[variant]}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function productSummary(lines: OrderRow[]): string {
   if (lines.length === 1) return lines[0]!.productName;
   const names = lines.map((l) => l.productName).join(", ");
@@ -197,6 +252,7 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
   const [detailGroup, setDetailGroup] = useState<OrderGroup | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [deleteConfirmKey, setDeleteConfirmKey] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const all = groupOrders(orders);
@@ -263,6 +319,9 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
           });
         }
       }
+      if (applied === "deleted") {
+        setDeleteConfirmKey(null);
+      }
 
       const jsonMessage =
         typeof (json as { message?: string }).message === "string"
@@ -271,13 +330,13 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
       const msg =
         jsonMessage ??
         (body.cancellationAction === "approve"
-          ? "Cancellation approved — customer notified."
+          ? "Cancellation approved."
           : body.cancellationAction === "reject"
-            ? "Cancellation rejected — customer notified."
+            ? "Cancellation rejected."
             : body.accept
-              ? "Order accepted — customer notified."
+              ? "Order accepted."
               : body.status === "dispatched"
-                ? "Order dispatched — customer notified."
+                ? "Order dispatched."
                 : "Order updated.");
       toast.success(msg);
       void load();
@@ -374,7 +433,7 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
         </div>
 
         <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-lg border border-black/10 bg-white shadow-sm">
-            <table className="w-full min-w-[640px] text-sm text-left border-collapse">
+            <table className="w-full min-w-[720px] text-sm text-left border-collapse">
               <thead>
                 <tr className="bg-[#075E54] text-white">
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">ID</th>
@@ -475,99 +534,112 @@ export function CompletedOrdersPanel({ refreshSignal = 0 }: Props) {
                               })
                             : "—"}
                         </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex flex-col gap-1 items-start">
+                        <td className="px-3 py-2.5 align-top">
+                          <div className="flex flex-wrap gap-1.5 min-w-[148px] max-w-[220px]">
                             {g.status === "pending" ? (
-                              <button
-                                type="button"
+                              <OrderTableActionBtn
+                                variant="teal"
                                 disabled={actionBusy === g.key}
-                                onClick={() => void patchOrder(g, { accept: true })}
-                                className="text-xs font-bold text-[#128C7E] hover:underline whitespace-nowrap disabled:opacity-50"
+                                onClick={() =>
+                                  void patchOrder(g, { accept: true })
+                                }
                               >
-                                Accept order
-                              </button>
+                                Accept
+                              </OrderTableActionBtn>
                             ) : null}
                             {g.status === "cancellation_requested" ? (
                               <>
-                                <button
-                                  type="button"
+                                <OrderTableActionBtn
+                                  variant="danger"
                                   disabled={actionBusy === g.key}
                                   onClick={() =>
                                     void patchOrder(g, {
                                       cancellationAction: "approve",
                                     })
                                   }
-                                  className="text-xs font-bold text-red-700 hover:underline whitespace-nowrap disabled:opacity-50"
                                 >
                                   Approve cancel
-                                </button>
-                                <button
-                                  type="button"
+                                </OrderTableActionBtn>
+                                <OrderTableActionBtn
+                                  variant="secondary"
                                   disabled={actionBusy === g.key}
                                   onClick={() =>
                                     void patchOrder(g, {
                                       cancellationAction: "reject",
                                     })
                                   }
-                                  className="text-xs font-bold text-[#54656f] hover:underline whitespace-nowrap disabled:opacity-50"
                                 >
                                   Reject cancel
-                                </button>
+                                </OrderTableActionBtn>
                               </>
                             ) : null}
                             {g.status === "accepted" ? (
-                              <button
-                                type="button"
+                              <OrderTableActionBtn
+                                variant="violet"
                                 disabled={actionBusy === g.key}
                                 onClick={() =>
                                   void patchOrder(g, { status: "dispatched" })
                                 }
-                                className="text-xs font-bold text-violet-700 hover:underline whitespace-nowrap disabled:opacity-50"
                               >
-                                Mark dispatched
-                              </button>
+                                Dispatch
+                              </OrderTableActionBtn>
                             ) : null}
                             {g.status !== "complete" ? (
-                              <button
-                                type="button"
+                              <OrderTableActionBtn
+                                variant="primary"
                                 disabled={actionBusy === g.key}
                                 onClick={() =>
                                   void patchOrder(g, { status: "complete" })
                                 }
-                                className="text-xs font-bold text-[#075E54] hover:underline whitespace-nowrap disabled:opacity-50"
                               >
-                                Mark complete
-                              </button>
+                                Complete
+                              </OrderTableActionBtn>
                             ) : null}
                             {g.status !== "pending" ? (
-                              <button
-                                type="button"
+                              <OrderTableActionBtn
+                                variant="secondary"
                                 disabled={actionBusy === g.key}
                                 onClick={() =>
                                   void patchOrder(g, { status: "pending" })
                                 }
-                                className="text-xs text-[#54656f] hover:underline whitespace-nowrap disabled:opacity-50"
                               >
-                                Mark pending
-                              </button>
+                                Pending
+                              </OrderTableActionBtn>
                             ) : null}
-                            <button
-                              type="button"
-                              disabled={actionBusy === g.key}
-                              onClick={() =>
-                                void patchOrder(g, { status: "deleted" })
-                              }
-                              className="text-xs font-bold text-red-600 hover:underline whitespace-nowrap disabled:opacity-50"
-                            >
-                              Delete
-                            </button>
-                            <button
-                              type="button"
+                            {deleteConfirmKey === g.key ? (
+                              <>
+                                <OrderTableActionBtn
+                                  variant="danger"
+                                  disabled={actionBusy === g.key}
+                                  onClick={() =>
+                                    void patchOrder(g, { status: "deleted" })
+                                  }
+                                >
+                                  Confirm
+                                </OrderTableActionBtn>
+                                <OrderTableActionBtn
+                                  variant="secondary"
+                                  disabled={actionBusy === g.key}
+                                  onClick={() => setDeleteConfirmKey(null)}
+                                >
+                                  Cancel
+                                </OrderTableActionBtn>
+                              </>
+                            ) : (
+                              <OrderTableActionBtn
+                                variant="danger"
+                                disabled={actionBusy === g.key}
+                                onClick={() => setDeleteConfirmKey(g.key)}
+                              >
+                                Delete
+                              </OrderTableActionBtn>
+                            )}
+                            <OrderTableActionBtn
+                              variant="ghost"
                               onClick={() => setDetailGroup(g)}
-                              className="text-xs font-bold text-[#075E54] hover:underline whitespace-nowrap"
                             >
-                              View detail
-                            </button>
+                              Details
+                            </OrderTableActionBtn>
                           </div>
                         </td>
                       </tr>
@@ -606,9 +678,10 @@ function OrderDetailModal({
   }) => void;
   busy: boolean;
 }) {
-  const phone = group.customerWaId
-    ? formatChatPhone(group.customerWaId)
-    : "—";
+  const phone =
+    group.customerPhone?.trim() ||
+    (group.customerWaId ? formatChatPhone(group.customerWaId) : "");
+  const phoneDigits = phone.replace(/\D/g, "");
   const name =
     group.customerName?.trim() ||
     (group.customerWaId ? "WhatsApp customer" : "Manual sale");
@@ -653,9 +726,27 @@ function OrderDetailModal({
               Customer
             </p>
             <p className="font-semibold text-[#111b21]">{name}</p>
-            {group.customerWaId ? (
-              <p className="font-mono text-[#54656f] text-xs mt-0.5">
-                {phone || group.customerWaId.trim()}
+            {phone ? (
+              <p className="mt-1">
+                <span className="text-[10px] font-bold uppercase text-[#667781] mr-1.5">
+                  Phone
+                </span>
+                {phoneDigits.length >= 8 ? (
+                  <a
+                    href={`https://wa.me/${phoneDigits}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-sm font-semibold text-[#128C7E] hover:underline"
+                  >
+                    {phone}
+                  </a>
+                ) : (
+                  <span className="font-mono text-sm text-[#54656f]">{phone}</span>
+                )}
+              </p>
+            ) : group.customerWaId ? (
+              <p className="text-xs text-[#667781] mt-1">
+                Phone unavailable — connect WhatsApp to resolve
               </p>
             ) : null}
           </div>

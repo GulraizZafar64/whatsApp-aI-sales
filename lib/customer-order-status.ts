@@ -14,7 +14,6 @@ import {
 import { customerRequestsOrderUpdate } from "@/lib/order-customer-intent";
 
 type ProductRef = { id: number; productName: string };
-import type { CustomerLanguage } from "@/lib/customer-language";
 
 const ORDER_STATUS_INQUIRY_RE =
   /\b(?:order\s*status|order\s+ka\s+status|status\s+(?:kya|kia|hai|ha|batao|btao|check|dekh)|status\s*(?:kya|of|for)?|track(?:ing)?\s*(?:my\s*)?order|where\s+is\s+my\s+order|my\s+order|mera\s+order|kab\s+(?:aey?ga|aye\s*gi|deliver|milega|pohanch|pohonch|receive)|kitn[aei]\s+din|delivery\s+(?:kab|status)|deliver\s+(?:hoga|kab|when)|parcel\s+kahan|order\s+kya\s+hua|pehle\s+(?:wala\s+)?order|purana\s+order|old\s+order|when\s+(?:will|is)\s+(?:it\s+)?deliver|already\s+(?:placed\s+)?order|dispatch(?:ed)?|bhej\s+diya|nikal\s+gaya)\b|(?:what|kya)\s+is\s+(?:the\s+)?status/i;
@@ -209,136 +208,6 @@ export async function fetchCustomerOrderSummaries(params: {
   return groups.slice(0, max);
 }
 
-function daysAgoLabel(date: Date, lang: CustomerLanguage): string {
-  const days = Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
-  if (days <= 0) return lang === "ur_roman" ? "aaj" : "today";
-  if (days === 1) return lang === "ur_roman" ? "1 din pehle" : "1 day ago";
-  return lang === "ur_roman" ? `${days} din pehle` : `${days} days ago`;
-}
-
-export function orderStatusPhrase(
-  status: OrderStatus,
-  lang: CustomerLanguage
-): string {
-  if (lang === "ur_roman") {
-    switch (status) {
-      case "pending":
-        return "aapka order receive ho gaya hai — abhi pending hai, owner jald confirm karega";
-      case "accepted":
-        return "aapka order accept ho chuka hai aur tayari ho rahi hai";
-      case "cancellation_requested":
-        return "aapki cancellation request owner ke paas pending hai";
-      case "cancelled":
-        return "aapka order cancel ho chuka hai";
-      case "rejected":
-        return "aapka order reject ho gaya hai";
-      case "dispatched":
-        return "aapka order dispatch ho chuka hai — delivery ke raaste par hai";
-      case "complete":
-        return "aapka order complete / deliver ho chuka hai";
-      case "deleted":
-        return "yeh order record mein nahi hai";
-      default:
-        return "order ki halat update ho chuki hai";
-    }
-  }
-  switch (status) {
-    case "pending":
-      return "your order is received and pending — the owner will confirm soon";
-    case "accepted":
-      return "your order is accepted and being prepared";
-    case "cancellation_requested":
-      return "your cancellation request is pending owner approval";
-    case "cancelled":
-      return "your order has been cancelled";
-    case "rejected":
-      return "your order was rejected by the business";
-    case "dispatched":
-      return "your order has been dispatched and is on the way";
-    case "complete":
-      return "your order is completed / delivered";
-    case "deleted":
-      return "this order is no longer on file";
-    default:
-      return "your order status has been updated";
-  }
-}
-
-function replyLang(lang: CustomerLanguage): "ur_roman" | "en" {
-  return lang === "ur_roman" || lang === "ur_script" ? "ur_roman" : "en";
-}
-
-export function buildOrderStatusWhatsAppReply(params: {
-  orders: CustomerOrderSummary[];
-  lang: CustomerLanguage;
-}): string {
-  const { orders } = params;
-  const lang = replyLang(params.lang);
-  if (!orders.length) {
-    return lang === "ur_roman"
-      ? "Hamain is number par koi purana order nahi mila. Naya order ke liye product ka naam likh kar order likhein."
-      : "We could not find a previous order for this chat. To place a new order, tell us what you want.";
-  }
-
-  if (orders.length === 1) {
-    const o = orders[0]!;
-    const when = daysAgoLabel(o.createdAt, lang);
-    const items =
-      o.lines.length === 1
-        ? `${o.lines[0]!.quantitySold}× ${o.lines[0]!.productName}`
-        : o.productSummary;
-    const intro =
-      lang === "ur_roman"
-        ? `Aapka order (ID ${o.leadOrderId}, ${when}): ${items}.`
-        : `Your order (ID ${o.leadOrderId}, ${when}): ${items}.`;
-    const statusLine = orderStatusPhrase(o.status, lang);
-    const footer =
-      o.status === "pending"
-        ? lang === "ur_roman"
-          ? " Agar order change karna ho (item add/remove) to batayein — sirf jab tak pending hai."
-          : " If you need to change this order (add/remove items), tell us — only while it is still pending."
-        : lang === "ur_roman"
-          ? " Is order mein ab change nahi ho sakta. Naya order karna ho to product likh kar batayein."
-          : " This order can no longer be changed. To order again, tell us what you want.";
-    return `${intro} ${statusLine}.${footer}`;
-  }
-
-  const header =
-    lang === "ur_roman"
-      ? "Aapke recent orders:"
-      : "Your recent orders:";
-  const lines = orders.slice(0, 3).map((o) => {
-    const when = daysAgoLabel(o.createdAt, lang);
-    const items =
-      o.lines.length === 1
-        ? o.lines[0]!.productName
-        : `${o.lines.length} items`;
-    const status =
-      lang === "ur_roman"
-        ? o.status === "dispatched"
-          ? "dispatch"
-          : o.status === "accepted"
-            ? "accepted"
-            : o.status === "pending"
-              ? "pending"
-              : o.status === "cancellation_requested"
-                ? "cancel pending"
-                : o.status === "cancelled"
-                  ? "cancelled"
-                  : o.status === "rejected"
-                    ? "rejected"
-                    : "complete"
-        : o.status;
-    return `• ${items} (${when}) — ${status}`;
-  });
-  const latest = orders[0]!;
-  const latestLine =
-    lang === "ur_roman"
-      ? `\nSab se recent: ${orderStatusPhrase(latest.status, lang)}.`
-      : `\nMost recent: ${orderStatusPhrase(latest.status, lang)}.`;
-  return `${header}\n${lines.join("\n")}${latestLine}`;
-}
-
 export function orderStatusSystemPromptBlock(
   orders: CustomerOrderSummary[]
 ): string {
@@ -367,8 +236,8 @@ export function orderStatusSystemPromptBlock(
     "Status meanings: PENDING=received awaiting owner; ACCEPTED=confirmed preparing; CANCELLATION_REQUESTED=customer asked to cancel accepted order; CANCELLED=cancelled; REJECTED=rejected; DISPATCHED=sent/out for delivery; COMPLETE=delivered/done.",
     "If the customer asks about their order status, delivery time, delivery address, or wants to update an order, answer using ONLY this database block.",
     "When showing current address for an order update, read delivery= from here — not from chat.",
-    "STATUS vs UPDATE: If they only ask status/address, give info only — do NOT use [[ORDER:…]] or modify their order.",
-    "ORDER UPDATE is allowed ONLY when status=PENDING. Show current order from this block, ask what to change, then apply after they confirm.",
+    "STATUS vs UPDATE: If they only ask status/address, give info only — emit [[ORDER_EVENT:{\"event\":\"order_status\"}]] and do NOT modify their order.",
+    "ORDER UPDATE: When customer asks to update/change order — read ONLY this database block for which order exists and what items/address are saved. NEVER infer from chat history. Allowed ONLY when status=PENDING.",
     "If status is ACCEPTED, DISPATCHED, or COMPLETE, say it cannot be changed and offer to place a NEW separate order.",
   ].join("\n");
 }

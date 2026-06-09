@@ -251,6 +251,25 @@ export async function patchMysqlSchema(sequelize: Sequelize): Promise<void> {
     "businesses",
     "ADD COLUMN `quota_contacts_bonus` INT UNSIGNED NOT NULL DEFAULT 0"
   );
+  await addColumnIfMissing(
+    sequelize,
+    "businesses",
+    "ADD COLUMN `bound_whatsapp_number` VARCHAR(64) NULL"
+  );
+
+  if (await columnExists(sequelize, "businesses", "bound_whatsapp_number")) {
+    await runSqlOptional(
+      sequelize,
+      `UPDATE \`businesses\` SET \`bound_whatsapp_number\` = \`whatsapp_number\`
+       WHERE \`bound_whatsapp_number\` IS NULL
+         AND \`whatsapp_number\` IS NOT NULL
+         AND TRIM(\`whatsapp_number\`) != ''`
+    );
+    await runSqlOptional(
+      sequelize,
+      "CREATE UNIQUE INDEX `businesses_bound_wa_unique` ON `businesses` (`bound_whatsapp_number`)"
+    );
+  }
 
   await runSqlOptional(
     sequelize,
